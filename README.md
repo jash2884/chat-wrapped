@@ -28,7 +28,7 @@ There's no analytics script on the page (the CSP would block one anyway). The Wo
 
 - unique visitors use a salted SHA-256 of IP + user agent + date, so they can't be reversed or linked across days, and the hashes are pruned after 35 days;
 - bots and scanners are filtered (user agent plus `Sec-Fetch-Mode: navigate`), and link-preview fetches from WhatsApp, LinkedIn and others are counted separately, which shows when the link is being shared;
-- a password-protected `/stats` page (server-rendered, no JS) shows visitors per day, the funnel from visit → Wrapped → sent to a group, countries, referrers and AI provider health. Matchday Brain writes to the same database.
+- a private `/stats/<secret>` page (an unguessable link, no login) (server-rendered, no JS) shows visitors per day, the funnel from visit → Wrapped → sent to a group, countries, referrers and AI provider health. Matchday Brain writes to the same database.
 
 ## Architecture
 

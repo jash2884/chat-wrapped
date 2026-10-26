@@ -107,7 +107,7 @@ export function renderStats(rows: Row[], days: number, now = new Date()) {
   const ranges = [7, 30, 90].map((d) => `<a href="?days=${d}"${d === days ? ' aria-current="page"' : ""}>${d} days</a>`).join("");
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex"><title>Analytics · jashparmar.com apps</title><style>${CSS}</style></head><body>
-<header><div><p class="muted">Private · cookieless · bots filtered</p><h1>App analytics</h1></div><nav>${ranges}</nav></header>
+<header><div><p class="muted">Private link · cookieless · bots filtered</p><h1>App analytics</h1></div><nav>${ranges}</nav></header>
 ${sites.map((s) => siteSection(s, rows.filter((r) => r.site === s), dayList)).join("")}
 <footer class="muted">Visitors are counted with a salted daily hash of IP + browser, never stored, unlinkable across days. Times are UTC. The portfolio (jashparmar.com) isn't on Cloudflare Workers; see Cloudflare → Analytics for it.</footer>
 </body></html>`;

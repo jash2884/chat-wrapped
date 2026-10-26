@@ -5,7 +5,7 @@ import { cleanOutput, isInvalid, sanitize, SCHEMA, SYSTEM } from "./insights.ts"
 import { renderStats } from "./stats-page.ts";
 
 type Env = AnalyticsEnv & {
-  STATS_PASSWORD?: string;
+  STATS_KEY?: string;
   ASSETS: { fetch: (request: Request) => Promise<Response> };
   GEMINI_API_KEY?: string;
   GEMINI_MODELS?: string;
@@ -161,13 +161,14 @@ function timingSafeEqual(a: string, b: string) {
   return diff === 0;
 }
 
+// The stats page lives at a secret, unguessable path (/stats/<STATS_KEY>) instead of
+// behind a login. Anything else under /stats looks exactly like a missing page.
 async function stats(request: Request, env: Env) {
-  const deny = () => new Response("Password required.", { status: 401, headers: { "WWW-Authenticate": 'Basic realm="App analytics", charset="UTF-8"', "Cache-Control": "no-store" } });
-  if (!env.STATS_PASSWORD || !env.DB) return new Response("Analytics isn't configured.", { status: 503 });
-  const auth = request.headers.get("authorization") ?? "";
-  let password = "";
-  try { password = atob(auth.replace(/^Basic\s+/i, "")).split(":").slice(1).join(":"); } catch { return deny(); }
-  if (!auth.startsWith("Basic ") || !timingSafeEqual(password, env.STATS_PASSWORD)) return deny();
+  const key = new URL(request.url).pathname.slice("/stats/".length);
+  if (!env.STATS_KEY || !env.DB || env.STATS_KEY.length < 24 || !timingSafeEqual(key, env.STATS_KEY)) {
+    const page = await env.ASSETS.fetch(new Request(new URL("/404.html", request.url)));
+    return new Response(page.body, { status: 404, headers: page.headers });
+  }
   const requested = Number(new URL(request.url).searchParams.get("days"));
   const days = [7, 30, 90].includes(requested) ? requested : 30;
   return new Response(renderStats(await readRange(env.DB, days), days), {
@@ -175,6 +176,7 @@ async function stats(request: Request, env: Env) {
       "Content-Type": "text/html; charset=utf-8",
       "Cache-Control": "no-store",
       "X-Robots-Tag": "noindex",
+      "Referrer-Policy": "no-referrer",
       "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'",
       "X-Content-Type-Options": "nosniff",
     },
@@ -188,7 +190,7 @@ export default {
     // reaches us (worker not installed yet), don't read the body: just send them home.
     if (pathname === "/share-target") return Response.redirect(new URL("/?shared=error", request.url).toString(), 303);
     if (pathname === "/" && request.method === "GET") ctx.waitUntil(recordPageview(env, request, SITE));
-    if (pathname === "/stats") return stats(request, env);
+    if (pathname.startsWith("/stats/")) return stats(request, env);
     if (!pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
     if (pathname === "/api/event" && request.method === "POST") return event(request, env, ctx);
     if (pathname === "/api/health") return json({ status: "ok", ai: Boolean(env.GEMINI_API_KEY || env.AI) });
