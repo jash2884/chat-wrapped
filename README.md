@@ -64,6 +64,7 @@ No frameworks, no build step and no npm dependencies.
 npm test          # 24 tests: parsers, stats, zip reader, API validation
 npm run dev       # wrangler dev (needs a workers.dev subdomain for the AI binding)
 node scripts/static.js   # static server for PWA/share-target testing on :8792
+node scripts/compare.js A.zip B.txt   # explain why two phones' exports of one chat differ
 ```
 
 AI insights use Gemini when `GEMINI_API_KEY` is set (`npx wrangler secret put GEMINI_API_KEY`) and fall back to Workers AI, which needs no key.

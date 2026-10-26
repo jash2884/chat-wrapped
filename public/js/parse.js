@@ -56,7 +56,9 @@ export function parseWhatsApp(raw, filename = "") {
     const clean = line.replace(ODD_SPACES, " ");
     const m = HEADER.exec(clean);
     if (m) {
-      cur = { d: [+m[1], +m[2], +m[3]], h: +m[4], mi: +m[5], s: m[6] ? +m[6] : 0, ap: m[7]?.toLowerCase(), rest: m[8] };
+      // Seconds are dropped on purpose: iPhone exports have them and Android exports
+      // don't, and keeping them would make the same chat give different reply times.
+      cur = { d: [+m[1], +m[2], +m[3]], h: +m[4], mi: +m[5], s: 0, ap: m[7]?.toLowerCase(), rest: m[8] };
       items.push(cur);
     } else if (cur) {
       cur.rest += "\n" + clean.replace(BIDI, "");
@@ -101,7 +103,7 @@ export function parseTelegram(data) {
   const messages = [];
   for (const m of chat.messages) {
     if (m?.type !== "message") continue;
-    const ts = Date.parse(String(m.date).slice(0, 19) + "Z");
+    const ts = Date.parse(String(m.date).slice(0, 16) + ":00Z"); // minute precision, like WhatsApp
     if (!Number.isFinite(ts)) continue;
     const text = (typeof m.text === "string" ? m.text
       : Array.isArray(m.text) ? m.text.map((t) => (typeof t === "string" ? t : t?.text ?? "")).join("") : "").trim();

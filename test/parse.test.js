@@ -25,7 +25,7 @@ test("iPhone export: 12-hour clock, direction marks, media and system notices", 
     ["Kabir", "text", "lunch?"],
   ]);
   // Month-first because 14 can't be a month; 9:05 PM is 21:05; 12:01 AM is 00:01.
-  assert.equal(new Date(chat.messages[0].ts).toISOString(), "2024-03-14T21:05:12.000Z");
+  assert.equal(new Date(chat.messages[0].ts).toISOString(), "2024-03-14T21:05:00.000Z");
   assert.equal(new Date(chat.messages[3].ts).toISOString(), "2024-03-14T00:01:00.000Z");
 });
 

@@ -9,7 +9,7 @@ export const pct = (x) => `${Math.round(x * 100)}%`;
 
 export function duration(ms) {
   const s = Math.round(ms / 1000);
-  if (s < 60) return `${s} sec`;
+  if (s < 60) return "under a minute"; // exports only have minute precision
   const m = Math.round(s / 60);
   if (m < 60) return `${m} min`;
   const h = Math.floor(m / 60), rest = m % 60;
