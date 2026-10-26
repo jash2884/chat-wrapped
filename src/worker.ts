@@ -15,7 +15,7 @@ type Env = AnalyticsEnv & {
 };
 const SITE = "chat-wrapped";
 // Button taps the page may report. Nothing about the chat itself is ever sent.
-const EVENTS = new Set(["demo", "upload", "share_received", "wrapped_whatsapp", "wrapped_telegram", "parse_error", "story_end", "dashboard", "share_group", "save_image", "install", "search", "quiz", "quiz_done", "person_card", "export_csv"]);
+const EVENTS = new Set(["demo", "upload", "share_received", "wrapped_whatsapp", "wrapped_telegram", "parse_error", "story_end", "dashboard", "share_group", "save_image", "install", "search", "quiz", "quiz_done", "person_card", "export_csv", "error_zip", "error_worker", "worker_fallback"]);
 
 const MAX_BODY = 16_000;
 

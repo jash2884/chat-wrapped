@@ -64,3 +64,16 @@ test("explains what's wrong with unusable zips", async () => {
   await assert.rejects(extractChat(new Uint8Array(100)), /incomplete or damaged/);
   assert.equal(await isZip(new TextEncoder().encode("12/03/2024, 21:15 - A: hi")), false);
 });
+
+test("falls back to the built-in decompressor when DecompressionStream is missing", async () => {
+  const saved = globalThis.DecompressionStream;
+  try {
+    globalThis.DecompressionStream = undefined; // like an old Android WebView
+    const zip = makeZip([{ name: "WhatsApp Chat with Riya.txt", data: "01/01/2025, 10:00 - Riya: hi 👋\n".repeat(100), deflate: true }]);
+    const entry = await extractChat(zip);
+    assert.match(text(entry.bytes), /^01\/01\/2025, 10:00 - Riya: hi 👋/);
+    assert.equal(text(entry.bytes).split("\n").length, 101);
+  } finally {
+    globalThis.DecompressionStream = saved;
+  }
+});

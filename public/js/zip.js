@@ -2,6 +2,8 @@
 // It reads only the central directory and the one entry it needs, so a 2 GB
 // export full of photos never gets loaded into memory.
 
+import { inflateRaw } from "./inflate.js";
+
 const EOCD = 0x06054b50, CENTRAL = 0x02014b50, LOCAL = 0x04034b50;
 
 // source: a Blob/File, or bytes (Uint8Array/ArrayBuffer) in tests.
@@ -37,6 +39,7 @@ export async function extractChat(source) {
     if (dv.getUint32(p, true) !== CENTRAL) throw new Error("This zip file looks damaged.");
     const nameLen = dv.getUint16(p + 28, true);
     entries.push({
+      flags: dv.getUint16(p + 8, true),
       method: dv.getUint16(p + 10, true),
       size: dv.getUint32(p + 20, true),
       local: dv.getUint32(p + 42, true),
@@ -51,12 +54,25 @@ export async function extractChat(source) {
     ?? usable.find((e) => /\.json$/i.test(e.name));
   if (!entry) throw new Error("No chat file found in this zip. Expected a .txt (WhatsApp) or .json (Telegram) file.");
 
+  if (entry.flags & 1) throw new Error("This zip is password-protected. Export the chat again without a password.");
+  if (entry.size === 0xffffffff || entry.local === 0xffffffff) throw new Error("This zip is over 4 GB. Export the chat “Without media” instead.");
   const head = view(await r.read(entry.local, 30));
   if (head.getUint32(0, true) !== LOCAL) throw new Error("This zip file looks damaged.");
   const start = entry.local + 30 + head.getUint16(26, true) + head.getUint16(28, true);
   const data = await r.read(start, entry.size);
   if (entry.method === 0) return { name: entry.name, bytes: data };
   if (entry.method !== 8) throw new Error("This zip uses an unsupported compression method.");
-  const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
-  return { name: entry.name, bytes: new Uint8Array(await new Response(stream).arrayBuffer()) };
+  return { name: entry.name, bytes: await inflate(data) };
+}
+
+// Use the browser's native decompressor when it has one (fast); older Android
+// browsers and in-app WebViews don't support "deflate-raw", so fall back to ours.
+export async function inflate(data) {
+  if (typeof DecompressionStream === "function") {
+    try {
+      const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+      return new Uint8Array(await new Response(stream).arrayBuffer());
+    } catch { /* unsupported format or a strict implementation: try ours */ }
+  }
+  return inflateRaw(data);
 }

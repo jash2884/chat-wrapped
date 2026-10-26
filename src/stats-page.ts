@@ -12,6 +12,7 @@ const EVENT_LABELS: Record<string, string> = {
   parse_error: "File couldn't be read", story_end: "Watched to the end", dashboard: "Opened all stats",
   share_group: "Sent to a group", save_image: "Saved the card", install: "Installed the app",
   search: "Word searches", quiz: "Quiz started", quiz_done: "Quiz finished", person_card: "Personal card shared", export_csv: "Stats exported (CSV)",
+  error_zip: "Zip couldn't be read", error_worker: "Browser couldn't process the file", worker_fallback: "Ran without a worker (older browser)",
   ai_ok: "AI verdict (Gemini)", ai_fallback: "AI verdict (Workers AI backup)", ai_cached: "AI verdict (from cache)",
   ai_error: "AI verdict failed", predict: "Head-to-head predictions",
 };

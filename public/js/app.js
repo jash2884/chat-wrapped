@@ -92,18 +92,45 @@ function ask(type, payload) {
   });
 }
 
-function run(message) {
-  if (busy) return;
+// Runs the chat engine in the page instead of a worker, for browsers that
+// can't start module workers (older Android WebViews and in-app browsers).
+// It offers the same postMessage / onmessage interface as a Worker.
+function inlineWorker() {
+  const w = { onmessage: null, onerror: null, terminated: false, terminate() { this.terminated = true; } };
+  const ready = import("./chat-core.js").then(({ createChatHandler }) =>
+    createChatHandler((data) => setTimeout(() => { if (!w.terminated) w.onmessage?.({ data }); })));
+  w.postMessage = (data) => { ready.then((handle) => handle(data)).catch(() => w.onerror?.()); };
+  return w;
+}
+
+function startWorker() {
+  try {
+    return new Worker(new URL("./analyze.worker.js", import.meta.url), { type: "module" });
+  } catch {
+    return inlineWorker();
+  }
+}
+
+function run(message, { inline = false } = {}) {
+  if (busy && !inline) return;
   showError("");
   setBusy(true, "Starting…");
   chatWorker?.terminate();
-  const worker = new Worker(new URL("./analyze.worker.js", import.meta.url), { type: "module" });
+  const worker = inline ? inlineWorker() : startWorker();
   chatWorker = worker;
+  let heard = false;
   worker.onmessage = async ({ data }) => {
+    heard = true;
     if (data.type === "progress") { statusText.textContent = data.step; return; }
     if (data.type === "answer") { pending.get(data.id)?.(data.answer); pending.delete(data.id); return; }
     setBusy(false);
-    if (data.type === "error") { worker.terminate(); chatWorker = null; track("parse_error"); showError(data.error); return; }
+    if (data.type === "error") {
+      worker.terminate();
+      chatWorker = null;
+      track(data.stage === "zip" ? "error_zip" : "parse_error");
+      showError(data.error);
+      return;
+    }
     const result = data.result;
     track(`wrapped_${result.all.platform}`);
     const needsSetup = result.all.people.length > 1 || result.years.length > 1;
@@ -112,22 +139,25 @@ function run(message) {
     applySelection(choice);
     startStory();
   };
-  worker.onerror = () => {
+  worker.onerror = (e) => {
+    e?.preventDefault?.();
     worker.terminate();
     chatWorker = null;
+    // A worker that fails before saying anything couldn't start (no module
+    // worker support): do the same work in the page instead.
+    if (!heard && !inline) { track("worker_fallback"); run(message, { inline: true }); return; }
     setBusy(false);
-    showError("Something went wrong while reading that file. Try exporting the chat again.");
+    track("error_worker");
+    showError("Something went wrong while reading that file. Try exporting the chat again, or try a different browser (Chrome works best).");
   };
   worker.postMessage(message);
 }
 
 function takeFile(file, { fromShare = false } = {}) {
   if (!file) return;
-  // Share-sheet files sometimes arrive with generic names; the parser decides instead.
-  if (!fromShare && !/\.(txt|zip|json)$/i.test(file.name)) {
-    showError("Upload the .txt or .zip from WhatsApp, or result.json from Telegram.");
-    return;
-  }
+  // No file-name check: Android pickers and Google Drive often drop the .zip or
+  // .txt ending, so the engine decides what the file is from its contents.
+  if (!file.size) { showError("That file is empty. Export the chat from WhatsApp again."); return; }
   track(fromShare ? "share_received" : "upload");
   run({ file });
 }
