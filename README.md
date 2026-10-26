@@ -22,6 +22,14 @@ WhatsApp chats are end-to-end encrypted and no app can read them, so instead of 
 - **Back into the group:** "Send to the group" opens the share sheet with the summary card and a caption that carries only totals (messages, peak hour, top emoji). Desktop falls back to a `wa.me` link. Link previews come from an Open Graph image.
 - **Offline:** the app shell is cached, so it works with Wi-Fi off, which is the easiest way to prove nothing is uploaded.
 
+## Analytics without tracking
+
+There's no analytics script on the page (the CSP would block one anyway). The Worker counts page loads itself and the page reports button taps by name (`demo`, `share_group`, ...) with `sendBeacon`. Everything lands in daily counters in D1:
+
+- unique visitors use a salted SHA-256 of IP + user agent + date, so they can't be reversed or linked across days, and the hashes are pruned after 35 days;
+- bots and scanners are filtered (user agent plus `Sec-Fetch-Mode: navigate`), and link-preview fetches from WhatsApp, LinkedIn and others are counted separately, which shows when the link is being shared;
+- a password-protected `/stats` page (server-rendered, no JS) shows visitors per day, the funnel from visit → Wrapped → sent to a group, countries, referrers and AI provider health. Matchday Brain writes to the same database.
+
 ## Architecture
 
 ```
@@ -53,7 +61,7 @@ No frameworks, no build step and no npm dependencies.
 ## Develop
 
 ```bash
-npm test          # 20 tests: parsers, stats, zip reader, API validation
+npm test          # 24 tests: parsers, stats, zip reader, API validation
 npm run dev       # wrangler dev (needs a workers.dev subdomain for the AI binding)
 node scripts/static.js   # static server for PWA/share-target testing on :8792
 ```

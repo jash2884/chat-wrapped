@@ -187,6 +187,7 @@ export function buildSlides(stats, ai, actions) {
   add("outro", () => {
     const img = h("img", { class: "s-card-img", alt: "Summary card for this chat" });
     actions.cardUrl().then((url) => { img.src = url; });
+    actions.reachedEnd?.();
     return h("div", { class: "s-center" },
       h("p", { class: "s-eyebrow" }, "That's a wrap"),
       img,

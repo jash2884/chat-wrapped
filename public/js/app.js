@@ -2,6 +2,7 @@ import { createInsights } from "./ai.js";
 import { renderDashboard } from "./dashboard.js";
 import { renderCard, sendToGroup, shareCard } from "./share.js";
 import { buildSlides, playStory } from "./story.js";
+import { track } from "./track.js";
 
 const $ = (id) => document.getElementById(id);
 const landing = $("landing"), dashboard = $("dashboard"), drop = $("drop"), fileInput = $("file");
@@ -33,9 +34,10 @@ function cardBlob() {
 
 const actions = {
   cardUrl: async () => URL.createObjectURL(await cardBlob()),
-  share: async () => shareCard(await cardBlob(), session.stats.title),
-  sendToGroup: async () => sendToGroup(await cardBlob(), session.stats),
-  dashboard: () => { story?.close(); },
+  share: async () => { track("save_image"); return shareCard(await cardBlob(), session.stats.title); },
+  sendToGroup: async () => { track("share_group"); return sendToGroup(await cardBlob(), session.stats); },
+  reachedEnd: () => { if (!session.ended) { session.ended = true; track("story_end"); } },
+  dashboard: () => { track("dashboard"); story?.close(); },
   replay: () => { story?.close(); startStory(); },
   reset: () => {
     session = null;
@@ -66,8 +68,9 @@ function run(message) {
     if (data.type === "progress") { statusText.textContent = data.step; return; }
     worker.terminate();
     setBusy(false);
-    if (data.type === "error") { showError(data.error); return; }
+    if (data.type === "error") { track("parse_error"); showError(data.error); return; }
     const stats = data.stats;
+    track(`wrapped_${stats.platform}`);
     const ai = createInsights(stats, { enabled: $("ai").checked, includeWords: $("words").checked });
     session = { stats, ai, card: null };
     document.body.classList.add("has-results");
@@ -89,11 +92,12 @@ function takeFile(file, { fromShare = false } = {}) {
     showError("Upload the .txt or .zip from WhatsApp, or result.json from Telegram.");
     return;
   }
+  track(fromShare ? "share_received" : "upload");
   run({ file });
 }
 
 $("browse").addEventListener("click", () => fileInput.click());
-$("demo").addEventListener("click", () => run({ demo: true }));
+$("demo").addEventListener("click", () => { if (!busy) track("demo"); run({ demo: true }); });
 fileInput.addEventListener("change", () => { takeFile(fileInput.files[0]); fileInput.value = ""; });
 drop.addEventListener("keydown", (e) => {
   if ((e.key === "Enter" || e.key === " ") && e.target === drop) { e.preventDefault(); fileInput.click(); }
@@ -174,6 +178,7 @@ installBtn.addEventListener("click", async () => {
   installBtn.hidden = true;
 });
 window.addEventListener("appinstalled", () => {
+  track("install");
   installBtn.hidden = true;
   showNotice("Installed! Next time, export a chat in WhatsApp and pick Chat Wrapped from the share menu.");
 });

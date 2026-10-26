@@ -3,7 +3,9 @@
   "name": "chat-wrapped",
   "main": "src/worker.ts",
   "compatibility_date": "2026-10-01",
-  "assets": { "directory": "./public", "binding": "ASSETS", "not_found_handling": "404-page" },
+  "assets": { "directory": "./public", "binding": "ASSETS", "not_found_handling": "404-page", "run_worker_first": ["/", "/api/*", "/stats", "/share-target"] },
+  // Shared with Matchday Brain: cookieless daily counters (see src/analytics.ts).
+  "d1_databases": [{ "binding": "DB", "database_name": "site-analytics", "database_id": "23c80596-1890-4554-bc3e-8aa0d90d12e3" }],
   "routes": [{ "pattern": "wrapped.jashparmar.com", "custom_domain": true }],
   "workers_dev": false,
   // Free fallback model when every Gemini model is busy; see src/worker.ts.

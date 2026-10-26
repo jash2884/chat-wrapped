@@ -3,13 +3,13 @@
 // A shared chat is handed to the page through Cache Storage on this device;
 // it is never sent to the server.
 
-const SHELL = "shell-v1";
+const SHELL = "shell-v2";
 const SHARED = "shared-chat";
 const SHARE_PATH = "/share-target";
 const SHELL_FILES = [
   "/", "/style.css", "/icon.svg", "/manifest.webmanifest",
   "/js/app.js", "/js/ai.js", "/js/analyze.worker.js", "/js/dashboard.js", "/js/demo.js", "/js/dom.js",
-  "/js/format.js", "/js/parse.js", "/js/payload.js", "/js/share.js", "/js/stats.js", "/js/story.js", "/js/zip.js",
+  "/js/format.js", "/js/parse.js", "/js/payload.js", "/js/share.js", "/js/stats.js", "/js/story.js", "/js/track.js", "/js/zip.js",
 ];
 
 self.addEventListener("install", (event) => {
