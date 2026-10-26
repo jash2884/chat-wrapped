@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Chat Wrapped</title>
+  <meta name="description" content="Spotify Wrapped for your WhatsApp and Telegram chats. Who talks most, who replies at 2 AM, your emoji language and awards. Runs entirely in your browser." />
+  <meta name="theme-color" content="#0d0a17" />
+  <meta property="og:title" content="Chat Wrapped: your chats, wrapped" />
+  <meta property="og:description" content="The story of your group chat in a dozen slides. Private: your messages never leave your device." />
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="top wrap">
+    <a class="logo" href="/" aria-label="Chat Wrapped home">
+      <span class="logo-mark" aria-hidden="true"></span>chat<b>wrapped</b>
+    </a>
+    <a class="top-link" href="https://github.com/jash2884/chat-wrapped">Source</a>
+  </header>
+
+  <main>
+    <section id="landing" class="landing wrap">
+      <div class="hero">
+        <p class="eyebrow">Wrapped, for your group chats</p>
+        <h1>Your chats,<br /><span class="grad">wrapped.</span></h1>
+        <p class="lede">Drop in a WhatsApp or Telegram export and get the story of your chat: who talks most, who replies at 2&nbsp;AM, your emoji language, and an award for everyone.</p>
+
+        <div id="drop" class="drop" tabindex="0" role="button" aria-describedby="drop-help">
+          <input id="file" type="file" accept=".txt,.zip,.json,application/zip,text/plain,application/json" hidden />
+          <div class="drop-icon" aria-hidden="true">
+            <svg viewBox="0 0 48 48"><path d="M24 31V11m0 0-8 8m8-8 8 8M10 30v5a4 4 0 0 0 4 4h20a4 4 0 0 0 4-4v-5" /></svg>
+          </div>
+          <p class="drop-title">Drop your chat export here</p>
+          <p id="drop-help" class="drop-help">WhatsApp <b>.txt</b> or <b>.zip</b>, Telegram <b>result.json</b></p>
+          <div class="drop-actions">
+            <button id="browse" class="btn primary" type="button">Choose file</button>
+            <button id="demo" class="btn ghost" type="button">Try a demo chat</button>
+          </div>
+          <div id="status" class="status" hidden><span class="spinner" aria-hidden="true"></span><span id="status-text" role="status"></span></div>
+        </div>
+        <div id="error" class="error" role="alert" hidden></div>
+
+        <div class="options">
+          <label class="check"><input id="ai" type="checkbox" checked /> <span><b>AI verdict</b> sends anonymous numbers only: no names, no messages</span></label>
+          <label class="check"><input id="words" type="checkbox" /> <span><b>Include top words</b> for a funnier verdict</span></label>
+        </div>
+      </div>
+
+      <div class="preview" aria-hidden="true">
+        <div class="phone p3"><span class="tag">📣</span></div>
+        <div class="phone p2"><span class="tag">🦉</span></div>
+        <div class="phone p1"><small>Together you sent</small><b>3,823</b><span>messages</span></div>
+      </div>
+    </section>
+
+    <section class="info wrap" aria-labelledby="how-title">
+      <div class="how">
+        <h2 id="how-title">Get your export in 30 seconds</h2>
+        <div class="tabs" role="tablist">
+          <button data-tab="ios" role="tab" aria-selected="true">WhatsApp · iPhone</button>
+          <button data-tab="android" role="tab" aria-selected="false">WhatsApp · Android</button>
+          <button data-tab="telegram" role="tab" aria-selected="false">Telegram</button>
+        </div>
+        <ol data-panel="ios">
+          <li>Open the chat and tap its name at the top.</li>
+          <li>Scroll down and tap <b>Export Chat</b>.</li>
+          <li>Choose <b>Without Media</b> and save the .zip to Files.</li>
+          <li>Drop that .zip here.</li>
+        </ol>
+        <ol data-panel="android" hidden>
+          <li>Open the chat and tap <b>⋮</b> → <b>More</b> → <b>Export chat</b>.</li>
+          <li>Choose <b>Without media</b>.</li>
+          <li>Save or email the .txt (or .zip) to yourself.</li>
+          <li>Drop it here.</li>
+        </ol>
+        <ol data-panel="telegram" hidden>
+          <li>Open <b>Telegram Desktop</b> and the chat you want.</li>
+          <li>Click <b>⋮</b> → <b>Export chat history</b>.</li>
+          <li>Untick photos/videos and set format to <b>JSON</b>.</li>
+          <li>Drop the <b>result.json</b> here.</li>
+        </ol>
+      </div>
+      <div class="privacy">
+        <h2>Private by design</h2>
+        <ul>
+          <li><b>🔒 Read on your device.</b> Your chat is parsed by your browser. There is no upload and nothing is stored.</li>
+          <li><b>🧱 Locked down.</b> A strict Content Security Policy only lets this page talk to its own server, so nothing can quietly send your chat elsewhere.</li>
+          <li><b>🤖 AI sees numbers.</b> The optional verdict sends stats like "P1 replies in 3 min". Names are swapped back on your device.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="dashboard" class="dashboard wrap" hidden aria-label="Chat statistics"></section>
+  </main>
+
+  <footer class="foot wrap">
+    <span>Built by <a href="https://jashparmar.com">Jash Parmar</a></span>
+    <span class="muted">Not affiliated with WhatsApp, Telegram or Spotify.</span>
+  </footer>
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>

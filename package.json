@@ -1,0 +1,13 @@
+{
+  "name": "chat-wrapped",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Spotify Wrapped for WhatsApp and Telegram chats, analysed entirely in the browser.",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "dev": "npx --yes wrangler@4 dev",
+    "deploy": "npx --yes wrangler@4 deploy"
+  },
+  "engines": { "node": ">=24" }
+}
