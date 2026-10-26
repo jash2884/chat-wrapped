@@ -1,6 +1,7 @@
 import { createInsights } from "./ai.js";
 import { renderDashboard } from "./dashboard.js";
 import { renderCard, sendToGroup, shareCard } from "./share.js";
+import { askSetup } from "./setup.js";
 import { buildSlides, playStory } from "./story.js";
 import { track } from "./track.js";
 
@@ -8,7 +9,7 @@ const $ = (id) => document.getElementById(id);
 const landing = $("landing"), dashboard = $("dashboard"), drop = $("drop"), fileInput = $("file");
 const statusEl = $("status"), statusText = $("status-text"), errorEl = $("error");
 
-let session = null; // { stats, ai, card: Promise<Blob> | null }
+let session = null; // { result, stats, you, period, ai, card: Promise<Blob> | null }
 let busy = false;
 
 function setBusy(on, text = "") {
@@ -39,6 +40,7 @@ const actions = {
   reachedEnd: () => { if (!session.ended) { session.ended = true; track("story_end"); } },
   dashboard: () => { track("dashboard"); story?.close(); },
   replay: () => { story?.close(); startStory(); },
+  setPeriod: (period) => { applySelection({ period, you: session.you }); },
   reset: () => {
     session = null;
     dashboard.hidden = true;
@@ -51,7 +53,7 @@ const actions = {
 
 let story = null;
 function startStory() {
-  story = playStory(buildSlides(session.stats, session.ai, actions), {
+  story = playStory(buildSlides(session.stats, session.ai, actions, { you: session.you }), {
     onClose: () => {
       story = null;
       dashboard.scrollIntoView({ block: "start" });
@@ -59,22 +61,33 @@ function startStory() {
   });
 }
 
+// Picks the period (a year or all time) and who "you" are, then (re)builds the
+// AI request and the dashboard for that view.
+function applySelection({ period, you }) {
+  const { result } = session;
+  const stats = period !== "all" && result.byYear[period] ? result.byYear[period] : result.all;
+  const ai = createInsights(stats, { enabled: $("ai").checked, includeWords: $("words").checked, you });
+  Object.assign(session, { stats, ai, you, period: stats === result.all ? "all" : period, card: null, cardAi: null, ended: false });
+  document.body.classList.add("has-results");
+  renderDashboard(dashboard, stats, ai, actions, { years: result.years, period: session.period, you });
+}
+
 function run(message) {
   if (busy) return;
   showError("");
   setBusy(true, "Starting…");
   const worker = new Worker(new URL("./analyze.worker.js", import.meta.url), { type: "module" });
-  worker.onmessage = ({ data }) => {
+  worker.onmessage = async ({ data }) => {
     if (data.type === "progress") { statusText.textContent = data.step; return; }
     worker.terminate();
     setBusy(false);
     if (data.type === "error") { track("parse_error"); showError(data.error); return; }
-    const stats = data.stats;
-    track(`wrapped_${stats.platform}`);
-    const ai = createInsights(stats, { enabled: $("ai").checked, includeWords: $("words").checked });
-    session = { stats, ai, card: null };
-    document.body.classList.add("has-results");
-    renderDashboard(dashboard, stats, ai, actions);
+    const result = data.result;
+    track(`wrapped_${result.all.platform}`);
+    const needsSetup = result.all.people.length > 1 || result.years.length > 1;
+    const choice = needsSetup ? await askSetup(result) : { you: null, period: "all" };
+    session = { result };
+    applySelection(choice);
     startStory();
   };
   worker.onerror = () => {

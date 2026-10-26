@@ -86,3 +86,48 @@ test("the WhatsApp caption shares totals only", async () => {
   const caption = groupCaption(analyze({ title: "Sharma Family", platform: "whatsapp", messages }));
   assert.equal(caption, "Our chat, wrapped 🎁 20 messages, peak hour 9 PM, top emoji 🎉. Make yours in 30 seconds (it never leaves your phone): https://wrapped.jashparmar.com");
 });
+
+test("every person gets a title, including lurkers in a big group", async () => {
+  const { analyzeAll } = await import("../public/js/stats.js");
+  const messages = [];
+  for (let d = 1; d <= 20; d++) {
+    for (let k = 0; k < 30; k++) messages.push(msg(at(d, 12, k), `Person ${k % 30}`, k % 5 ? "sounds good" : "who is up for dinner tonight? 🍕"));
+  }
+  messages.push(msg(at(21, 23), "Quiet One", "hi"));
+  const { all } = analyzeAll({ title: "Big", platform: "whatsapp", messages });
+  assert.equal(all.people.length, 31);
+  assert.ok(all.people.every((p) => p.signature?.title && p.rank >= 1));
+  assert.equal(all.people.find((p) => p.name === "Quiet One").signature.title, "The Lurker");
+});
+
+test("catchphrases, duos and per-year wraps with a comparison", async () => {
+  const { analyzeAll } = await import("../public/js/stats.js");
+  const messages = [];
+  const y = (year, day, h, m) => Date.UTC(year, 0, day, h, m);
+  for (let d = 1; d <= 20; d++) {
+    messages.push(msg(y(2025, d, 22, 0), "A", "good night everyone"), msg(y(2025, d, 22, 1), "B", "good night"), msg(y(2025, d, 22, 2), "C", "ok"));
+  }
+  for (let d = 1; d <= 30; d++) {
+    messages.push(msg(y(2026, d, 9, 0), "A", "happy birthday to you"), msg(y(2026, d, 9, 1), "B", "thanks so much"), msg(y(2026, d, 9, 2), "A", "see you"));
+  }
+  const r = analyzeAll({ title: "t", platform: "whatsapp", messages }, 30);
+  assert.deepEqual(r.years, [2026, 2025]);
+  assert.equal(r.byYear[2026].totals.messages, 90);
+  assert.deepEqual(r.byYear[2026].previous, { year: 2025, messages: 60 });
+  assert.equal(r.byYear[2026].period, "2026");
+  assert.ok(r.all.phrases.some(([g]) => g === "good night"));
+  assert.ok(r.all.phrases.some(([g]) => g === "happy birthday"));
+  assert.deepEqual(r.all.duos[0].people, ["A", "B"]);
+  assert.equal(r.all.people.find((p) => p.name === "B").bestBuddy.name, "A");
+});
+
+test("the person who exported shows as You with correct grammar", async () => {
+  const { fixYou } = await import("../public/js/payload.js");
+  assert.equal(fixYou("You keeps the group alive"), "You keep the group alive");
+  assert.equal(fixYou("You is the night owl and You's emojis rule"), "You are the night owl and Your emojis rule");
+  const messages = [];
+  for (let d = 1; d <= 10; d++) messages.push(msg(at(d, 20), "Priya", "hey"), msg(at(d, 20, 3), "Rahul", "hello"));
+  const { payload, names } = insightsPayload(analyze({ title: "t", platform: "whatsapp", messages }), { you: "Rahul" });
+  assert.equal(payload.you, "P2");
+  assert.deepEqual(names, ["Priya", "You"]);
+});

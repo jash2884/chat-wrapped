@@ -1,7 +1,7 @@
 // Parsing and analysis run off the main thread so 100k-message chats don't freeze the page.
 import { demoChat } from "./demo.js";
 import { parseChat } from "./parse.js";
-import { analyze } from "./stats.js";
+import { analyzeAll } from "./stats.js";
 import { extractChat, isZip } from "./zip.js";
 
 const MAX_TEXT = 300 * 1024 * 1024;
@@ -31,7 +31,7 @@ self.onmessage = async ({ data }) => {
     progress("Reading every message…");
     const chat = parseChat(text, name);
     progress(`Crunching ${chat.messages.length.toLocaleString("en")} messages…`);
-    self.postMessage({ type: "done", stats: analyze(chat) });
+    self.postMessage({ type: "done", result: analyzeAll(chat) });
   } catch (e) {
     self.postMessage({ type: "error", error: e?.message ?? String(e) });
   }

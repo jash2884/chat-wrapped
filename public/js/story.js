@@ -19,6 +19,10 @@ const THEMES = {
   starter: ["#5ff5de", "#4b5cf0", "dark"],
   awards: ["#ff6a1a", "#e8125c", "light"],
   ai: ["#2a0a5e", "#c4185c", "light"],
+  you: ["#ffe14d", "#ff7a1a", "dark"],
+  roll: ["#1d1446", "#5b21b6", "light"],
+  duo: ["#ff9ad5", "#7c3aed", "light"],
+  phrases: ["#b8f5ff", "#3b82f6", "dark"],
   outro: ["#17112b", "#3a1f6b", "light"],
 };
 
@@ -38,13 +42,15 @@ function heatGrid(heat) {
     heat.flatMap((row) => row.map((v) => h("i", { style: `--o:${(0.12 + 0.88 * (v / max)).toFixed(2)}` }))));
 }
 
-export function buildSlides(stats, ai, actions) {
+export function buildSlides(stats, ai, actions, { you = null } = {}) {
   const s = stats, people = s.people;
+  const me = you ? people.find((p) => p.name === you) : null;
+  const label = (p) => (p.name === you ? "You" : p.name);
   const slides = [];
-  const add = (id, make) => slides.push({ id, theme: THEMES[id], make });
+  const add = (id, make, opts = {}) => slides.push({ id, theme: THEMES[id], make, ...opts });
 
   add("intro", () => h("div", { class: "s-center" },
-    h("p", { class: "s-eyebrow" }, `${s.platform === "telegram" ? "Telegram" : "WhatsApp"} · Wrapped`),
+    h("p", { class: "s-eyebrow" }, `${s.platform === "telegram" ? "Telegram" : "WhatsApp"} · ${s.period && s.period !== "All time" ? `${s.period} Wrapped` : "All-time Wrapped"}`),
     h("h2", { class: "s-title xl" }, s.title),
     h("p", { class: "s-sub" }, `${f.range(s.range.first, s.range.last)}`),
     h("p", { class: "s-sub" }, `${people.length} ${people.length === 1 ? "person" : "people"} · ${f.int(s.totals.days)} days`),
@@ -56,6 +62,7 @@ export function buildSlides(stats, ai, actions) {
     h("p", { class: "s-big" }, big(s.totals.messages)),
     h("p", { class: "s-title" }, "messages"),
     h("p", { class: "s-sub" }, `That's ${s.totals.perDay.toFixed(1)} a day, with chats on ${f.int(s.totals.activeDays)} of ${f.int(s.totals.days)} days.`),
+    s.previous ? h("p", { class: "s-sub" }, yoy(s.totals.messages, s.previous)) : null,
     h("p", { class: "s-note" }, s.totals.novels >= 1
       ? `${f.int(s.totals.words)} words: about ${s.totals.novels.toFixed(1)} novels' worth.`
       : `${f.int(s.totals.words)} words: about ${f.int(Math.max(1, pages))} pages of a book.`)));
@@ -80,6 +87,33 @@ export function buildSlides(stats, ai, actions) {
       bars(shown.map((p) => ({ label: p.name, value: p.messages, text: f.pct(p.share) })), shown[0].messages),
       people.length > 6 ? h("p", { class: "s-note" }, `+ ${people.length - 6} more people`) : null);
   });
+
+  if (me) {
+    add("you", () => h("div", null,
+      h("p", { class: "s-eyebrow" }, "Your Wrapped"),
+      s.isGroup
+        ? h("p", { class: "s-big" }, `#${me.rank}`)
+        : h("p", { class: "s-big" }, f.pct(me.share)),
+      h("h2", { class: "s-title" }, s.isGroup ? `loudest of ${people.length}, with ${f.int(me.messages)} messages.` : `of the messages were yours (${f.int(me.messages)}).`),
+      h("p", { class: "s-sub" }, `${me.signature.emoji} You're ${me.signature.title}: ${me.signature.detail}.`),
+      me.bestBuddy ? h("p", { class: "s-sub" }, `💞 Your chat bestie: ${me.bestBuddy.name}. You replied to them ${f.int(me.bestBuddy.replies)} times.`) : null,
+      h("p", { class: "s-note" }, [`Most active around ${f.hour(me.peakHour)}`, me.topEmoji ? `top emoji ${me.topEmoji}` : null, me.topWords.length ? `favourite word “${me.topWords[0][0]}”` : null].filter(Boolean).join(" · ") + ".")));
+  }
+
+  if (people.length >= 2) {
+    // Everyone gets a line, however big the group: the list scrolls and the slide waits.
+    add("roll", () => h("div", { class: "s-roll-wrap" },
+      h("p", { class: "s-eyebrow" }, `Roll call · all ${people.length}`),
+      h("h2", { class: "s-title" }, "Everyone, ranked."),
+      h("ol", { class: "s-roll s-scroll" }, people.map((p) =>
+        h("li", { class: p.name === you ? "is-you" : null },
+          h("span", { class: "s-roll-rank" }, `#${p.rank}`),
+          h("span", { class: "s-roll-body" },
+            h("b", null, label(p)),
+            h("span", null, `${p.signature.emoji} ${p.signature.title} · ${p.signature.detail}`)),
+          h("span", { class: "s-roll-num" }, f.int(p.messages), h("small", null, f.pct(p.share)))))),
+      h("p", { class: "s-note" }, people.length > 6 ? "Scroll the list · tap the edges to continue" : "Tap to continue")), { manual: people.length > 6 });
+  }
 
   add("time", () => h("div", null,
     h("p", { class: "s-eyebrow" }, "Your prime time"),
@@ -115,6 +149,13 @@ export function buildSlides(stats, ai, actions) {
     });
   }
 
+  if (s.phrases?.length >= 3) {
+    add("phrases", () => h("div", null,
+      h("p", { class: "s-eyebrow" }, "Your catchphrases"),
+      h("h2", { class: "s-title" }, `“${s.phrases[0][0]}”, ${f.int(s.phrases[0][1])} times.`),
+      h("ol", { class: "s-phrases" }, s.phrases.slice(1, 7).map(([g, n]) => h("li", null, h("span", null, `“${g}”`), h("b", null, f.int(n)))))));
+  }
+
   if (s.topEmojis.length >= 3) {
     add("emoji", () => h("div", { class: "s-center" },
       h("p", { class: "s-eyebrow" }, "Your emoji language"),
@@ -144,6 +185,16 @@ export function buildSlides(stats, ai, actions) {
       h("p", { class: "s-note" }, `Across ${f.int(s.totals.conversations)} conversations (6+ hours of quiet starts a new one).`)));
   }
 
+  if (s.isGroup && s.duos?.length) {
+    const [first, ...rest] = s.duos;
+    const names = (d) => d.people.map((n) => (n === you ? "You" : n));
+    add("duo", () => h("div", { class: "s-center" },
+      h("p", { class: "s-eyebrow" }, "The dynamic duo"),
+      h("h2", { class: "s-title xl" }, names(first).join(" & ")),
+      h("p", { class: "s-sub" }, `${f.int(first.replies)} replies back and forth. Nobody talks to each other more.`),
+      rest.length ? h("ol", { class: "s-phrases" }, rest.slice(0, 3).map((d) => h("li", null, h("span", null, names(d).join(" & ")), h("b", null, f.int(d.replies))))) : null));
+  }
+
   if (s.awards.length) {
     add("awards", () => h("div", null,
       h("p", { class: "s-eyebrow" }, "And the awards go to…"),
@@ -171,9 +222,9 @@ export function buildSlides(stats, ai, actions) {
           const d = st.data;
           body.replaceChildren(
             h("p", { class: "s-eyebrow" }, "The AI's verdict"),
-            h("h2", { class: "s-title xl quote" }, d.vibe),
+            h("h2", { class: "s-title ai-vibe quote" }, d.vibe),
             h("p", { class: "s-sub" }, d.summary),
-            stagger(h("div", { class: "s-personas" }, d.personas.slice(0, 4).map((p) =>
+            stagger(h("div", { class: "s-personas s-scroll" }, d.personas.map((p) =>
               h("div", null, h("b", null, `${p.name}: ${p.title}`), h("span", null, p.line))))),
             h("p", { class: "s-note" }, `🔮 ${d.prediction}`));
         }
@@ -199,6 +250,12 @@ export function buildSlides(stats, ai, actions) {
   });
 
   return slides;
+}
+
+function yoy(now, previous) {
+  const change = (now - previous.messages) / previous.messages;
+  if (Math.abs(change) < 0.05) return `About the same as ${previous.year}.`;
+  return change > 0 ? `${f.pct(change)} more than ${previous.year} 📈` : `${f.pct(-change)} fewer than ${previous.year} 📉`;
 }
 
 export function playStory(slides, { onClose }) {
@@ -235,9 +292,9 @@ export function playStory(slides, { onClose }) {
   const prev = () => show(Math.max(0, index - 1));
 
   function tick(now) {
-    if (!paused && !held && auto && index < slides.length - 1) elapsed += now - last;
+    if (!paused && !held && auto && !slides[index].manual && index < slides.length - 1) elapsed += now - last;
     last = now;
-    segs[index].firstChild.style.width = index === slides.length - 1 ? "100%" : `${Math.min(100, (elapsed / DURATION) * 100)}%`;
+    segs[index].firstChild.style.width = index === slides.length - 1 || slides[index].manual ? "100%" : `${Math.min(100, (elapsed / DURATION) * 100)}%`;
     if (elapsed >= DURATION) next();
     raf = requestAnimationFrame(tick);
   }
@@ -245,13 +302,13 @@ export function playStory(slides, { onClose }) {
   function setPaused(p) { paused = p; card.classList.toggle("is-paused", p); }
 
   card.addEventListener("pointerdown", (e) => {
-    if (e.target.closest("button, a")) return;
+    if (e.target.closest("button, a, .s-scroll")) return;
     downAt = performance.now();
     held = true;
   });
   card.addEventListener("pointerup", (e) => {
     held = false;
-    if (e.target.closest("button, a") || !downAt) return;
+    if (e.target.closest("button, a, .s-scroll") || !downAt) return;
     const tap = performance.now() - downAt < 300;
     downAt = 0;
     if (!tap) return; // a long press just pauses while held

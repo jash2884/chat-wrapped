@@ -1,13 +1,13 @@
 // Fetches AI insights in the background while the story plays.
 import { deanonymize, insightsPayload } from "./payload.js";
 
-export function createInsights(stats, { enabled, includeWords }) {
+export function createInsights(stats, { enabled, includeWords, you = null }) {
   const listeners = new Set();
   let state = { status: enabled ? "loading" : "off" };
   const set = (next) => { state = next; listeners.forEach((fn) => fn(state)); };
 
   if (enabled) {
-    const { payload, names } = insightsPayload(stats, { includeWords });
+    const { payload, names } = insightsPayload(stats, { includeWords, you });
     const named = (s) => deanonymize(s, names);
     fetch("/api/insights", {
       method: "POST",

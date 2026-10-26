@@ -42,3 +42,8 @@ test("model output is trimmed, capped and limited to known members", () => {
   assert.deepEqual(out.personas, [{ id: "P1", title: "Night Queen", line: "P1 types at 2 AM." }]);
   assert.throws(() => cleanOutput({ personas: [] }, payload), /incomplete/);
 });
+
+test("the you field must point at a member", () => {
+  assert.equal(sanitize({ ...structuredClone(payload), you: "P2" }).you, "P2");
+  assert.throws(() => sanitize({ ...structuredClone(payload), you: "Maya" }), /member id/);
+});

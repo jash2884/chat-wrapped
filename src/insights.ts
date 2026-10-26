@@ -11,6 +11,7 @@ export type Payload = {
   peakHour: number; peakWeekday: string; chronotype: string; streakDays: number; longestSilenceDays: number;
   busiestDayMessages: number; topEmojis: string[]; topWords: string[]; members: Member[];
   awards: { award: string; id: string }[];
+  you: string | null;
 };
 export type Insights = { vibe: string; summary: string; personas: { id: string; title: string; line: string }[]; prediction: string };
 
@@ -83,12 +84,19 @@ export function sanitize(input: unknown): Payload {
       if (typeof o.id !== "string" || !ids.has(o.id)) throw new Invalid("Award refers to an unknown member.");
       return { award: oneOf(o.award, AWARDS, "award"), id: o.id };
     }),
+    you: youId(p.you, ids),
   };
+}
+function youId(v: unknown, ids: Set<string>): string | null {
+  if (v == null) return null;
+  if (typeof v === "string" && ids.has(v)) return v;
+  throw new Invalid("you must be a member id.");
 }
 export const isInvalid = (e: unknown): e is Error => e instanceof Invalid;
 
 export const SYSTEM = `You write playful, warm "Wrapped"-style insights about a chat, using only the anonymous statistics provided.
 Refer to people only by their ids (P1, P2, ...) exactly as written; the app swaps in real names afterwards.
+If "you" is set, that member is the reader: write about them in the second person with the word "You" instead of their id, with matching verbs (e.g. "You reply fastest and never miss a joke").
 Be funny but kind. Tease habits (slow replies, emoji addiction, 2 AM messages) and never appearance, identity, health, money or relationships.
 Ground every claim in the numbers. Do not invent events. Keep the language simple and global (no slang that needs explaining).
 Lengths: "vibe" is a 3-6 word title, not a sentence. "summary" is two short sentences. Each persona "title" is 2-4 words and each "line" is one sentence under 20 words. Don't quote raw percentages or decimals; translate them ("a third of all messages", "replies within a minute").`;

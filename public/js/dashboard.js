@@ -29,10 +29,13 @@ function aiPanel(ai) {
   return panel;
 }
 
-function peopleTable(stats) {
-  const shown = stats.people.slice(0, 12), max = shown[0].messages;
-  const rows = shown.map((p) => h("tr", null,
-    h("th", { scope: "row" }, h("span", { class: "who" }, p.name),
+// Every person gets a row and a card, however big the group; a search box
+// narrows the cards down in large groups.
+function people(stats, you) {
+  const max = stats.people[0].messages;
+  const shownName = (p) => (p.name === you ? `${p.name} (you)` : p.name);
+  const rows = stats.people.map((p) => h("tr", { class: p.name === you ? "is-you" : null },
+    h("th", { scope: "row" }, h("span", { class: "who" }, `#${p.rank} ${shownName(p)}`),
       h("span", { class: "meter" }, h("i", { style: `--w:${(p.messages / max) * 100}%` }))),
     h("td", null, f.int(p.messages), h("small", null, f.pct(p.share))),
     h("td", null, p.avgWords.toFixed(1)),
@@ -41,11 +44,38 @@ function peopleTable(stats) {
     h("td", null, f.pct(p.nightShare)),
     h("td", null, p.topEmoji ?? "—"),
     h("td", null, f.int(p.media))));
-  return card("People",
-    h("div", { class: "table-wrap" }, h("table", null,
-      h("thead", null, h("tr", null, ["Person", "Messages", "Words / msg", "Reply time", "Starts chats", "After midnight", "Emoji", "Media"].map((t) => h("th", { scope: "col" }, t)))),
-      h("tbody", null, rows))),
-    stats.people.length > 12 ? h("p", { class: "muted" }, `+ ${stats.people.length - 12} more people with fewer messages.`) : null);
+
+  const cards = stats.people.map((p) => {
+    const el = h("article", { class: `pcard${p.name === you ? " is-you" : ""}`, "data-name": p.name.toLowerCase() },
+      h("header", null, h("b", null, shownName(p)), h("span", { class: "muted" }, `#${p.rank}`)),
+      h("span", { class: "sig" }, `${p.signature.emoji} ${p.signature.title}`),
+      h("span", { class: "muted" }, p.signature.detail),
+      h("dl", null,
+        h("dt", null, "Messages"), h("dd", null, `${f.int(p.messages)} (${f.pct(p.share)})`),
+        h("dt", null, "Most active"), h("dd", null, f.hour(p.peakHour)),
+        h("dt", null, "Reply time"), h("dd", null, p.medianReply == null ? "—" : f.duration(p.medianReply)),
+        h("dt", null, "Starts chats"), h("dd", null, f.pct(p.startShare)),
+        h("dt", null, "Top emoji"), h("dd", null, p.topEmoji ?? "—"),
+        h("dt", null, "Top words"), h("dd", null, p.topWords.length ? p.topWords.slice(0, 3).map(([w]) => w).join(", ") : "—"),
+        h("dt", null, "Bestie"), h("dd", null, p.bestBuddy ? `${p.bestBuddy.name === you ? "you" : p.bestBuddy.name} (${f.int(p.bestBuddy.replies)} replies)` : "—")));
+    return el;
+  });
+  const grid = h("div", { class: "people-cards" }, cards);
+  const search = stats.people.length > 8 ? h("input", {
+    type: "search", placeholder: `Search ${stats.people.length} people…`, "aria-label": "Search people",
+    oninput: (e) => {
+      const q = e.target.value.trim().toLowerCase();
+      for (const c of cards) c.hidden = q && !c.dataset.name.includes(q);
+    },
+  }) : null;
+
+  return [
+    card(`Everyone (${stats.people.length})`, search ? h("div", { class: "people-tools" }, search) : null, grid),
+    card("Leaderboard",
+      h("div", { class: "table-wrap tall" }, h("table", null,
+        h("thead", null, h("tr", null, ["Person", "Messages", "Words / msg", "Reply time", "Starts chats", "After midnight", "Emoji", "Media"].map((t) => h("th", { scope: "col" }, t)))),
+        h("tbody", null, rows)))),
+  ];
 }
 
 function heatmap(stats) {
@@ -70,27 +100,34 @@ function timeline(stats) {
         h("span", null, !many || i % 3 === 0 ? f.monthLabel(m.month) : "")))));
 }
 
-export function renderDashboard(el, stats, ai, actions) {
+export function renderDashboard(el, stats, ai, actions, { years = [], period = "all", you = null } = {}) {
   const s = stats;
   el.replaceChildren(
     h("div", { class: "dash-head" },
       h("div", null,
         h("p", { class: "eyebrow" }, `${s.platform === "telegram" ? "Telegram" : "WhatsApp"} · ${f.range(s.range.first, s.range.last)}`),
-        h("h2", null, s.title)),
+        h("h2", null, s.title),
+        years.length > 1 ? h("div", { class: "period", role: "group", "aria-label": "Period" },
+          [...years.map(String), "all"].map((y) => h("button", {
+            type: "button", class: "chip", "aria-pressed": String(y === period),
+            onclick: () => actions.setPeriod(y),
+          }, y === "all" ? "All time" : `${y}`))) : null),
       h("div", { class: "dash-actions" },
         h("button", { class: "btn primary", onclick: actions.replay }, "▶ Replay story"),
         h("button", { class: "btn ghost", onclick: actions.sendToGroup }, "💬 Send to group"),
         h("button", { class: "btn ghost", onclick: actions.share }, "Save card"),
         h("button", { class: "btn ghost", onclick: actions.reset }, "New chat"))),
     h("div", { class: "tiles" },
-      tile("Messages", f.int(s.totals.messages), `${s.totals.perDay.toFixed(1)} per day`),
+      tile("Messages", f.int(s.totals.messages), s.previous
+        ? `${s.totals.messages >= s.previous.messages ? "+" : "−"}${f.pct(Math.abs(s.totals.messages - s.previous.messages) / s.previous.messages)} vs ${s.previous.year}`
+        : `${s.totals.perDay.toFixed(1)} per day`),
       tile("Words", f.int(s.totals.words), s.totals.novels >= 1 ? `${s.totals.novels.toFixed(1)} novels` : `${f.int(s.totals.words / 250)} book pages`),
       tile("Active days", f.int(s.totals.activeDays), `of ${f.int(s.totals.days)}`),
       tile("Conversations", f.int(s.totals.conversations)),
       tile("Longest streak", `${s.streak.days} days`),
       tile("Media shared", f.int(s.totals.media), s.totals.deleted ? `${f.int(s.totals.deleted)} deleted messages` : null)),
     aiPanel(ai),
-    peopleTable(s),
+    ...people(s, you),
     h("div", { class: "grid-2" }, heatmap(s), timeline(s)),
     h("div", { class: "grid-2" },
       card("Top words", s.topWords.length
@@ -99,6 +136,13 @@ export function renderDashboard(el, stats, ai, actions) {
       card("Top emojis", s.topEmojis.length
         ? h("ol", { class: "emoji-list" }, s.topEmojis.slice(0, 10).map(([e, c]) => h("li", null, h("span", null, e), h("b", null, f.int(c)))))
         : h("p", { class: "muted" }, "No emojis. A serious chat."))),
+    h("div", { class: "grid-2" },
+      card("Catchphrases", s.phrases?.length
+        ? h("ol", { class: "phrase-list" }, s.phrases.map(([g, n]) => h("li", null, h("span", null, `“${g}”`), h("b", null, f.int(n)))))
+        : h("p", { class: "muted" }, "No phrase came up 3 or more times.")),
+      card("Dynamic duos", s.duos?.length && s.people.length > 2
+        ? h("ol", { class: "duo-list" }, s.duos.map((d) => h("li", null, h("span", null, d.people.map((n) => (n === you ? "You" : n)).join(" & ")), h("b", null, `${f.int(d.replies)} replies`))))
+        : h("p", { class: "muted" }, s.people.length > 2 ? "Not enough back-and-forth yet." : "It's just the two of you."))),
     s.awards.length ? card("Awards", h("div", { class: "awards" }, s.awards.map((a) =>
       h("div", { class: "award" }, h("span", { class: "a-emoji" }, a.emoji), h("b", null, a.title), h("span", null, a.person), h("small", null, a.detail))))) : null,
     card("Moments",

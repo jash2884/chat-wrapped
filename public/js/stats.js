@@ -23,14 +23,14 @@ const median = (xs) => {
 const dayIso = (day) => new Date(day * DAY).toISOString().slice(0, 10);
 
 function newPerson(name) {
-  return { name, messages: 0, texts: 0, words: 0, media: 0, deleted: 0, emojis: 0, laughs: 0, questions: 0, night: 0, starts: 0, replies: [], emojiMap: new Map() };
+  return { name, messages: 0, texts: 0, words: 0, media: 0, deleted: 0, emojis: 0, laughs: 0, questions: 0, night: 0, starts: 0, replies: [], emojiMap: new Map(), wordMap: new Map(), replyTo: new Map(), hours: Array(24).fill(0) };
 }
 
 export function analyze({ title, platform, messages }) {
   const msgs = [...messages].sort((a, b) => a.ts - b.ts);
   if (msgs.length < 10) throw new Error("This chat has fewer than 10 messages. Not quite enough to wrap.");
 
-  const people = new Map(), days = new Map(), months = new Map(), words = new Map(), emojis = new Map();
+  const people = new Map(), days = new Map(), months = new Map(), words = new Map(), emojis = new Map(), phrases = new Map(), duos = new Map();
   const heat = Array.from({ length: 7 }, () => Array(24).fill(0)); // Monday-first × hour
   const totals = { messages: msgs.length, words: 0, media: 0, deleted: 0 };
   let prev = null, conversations = 0;
@@ -40,12 +40,17 @@ export function analyze({ title, platform, messages }) {
     if (!p) people.set(m.author, (p = newPerson(m.author)));
     const d = new Date(m.ts), hr = d.getUTCHours();
     p.messages++;
+    p.hours[hr]++;
     heat[(d.getUTCDay() + 6) % 7][hr]++;
     bump(days, Math.floor(m.ts / DAY));
     bump(months, d.toISOString().slice(0, 7));
     if (hr < 5) p.night++;
     if (!prev || m.ts - prev.ts >= CONVO_GAP) { p.starts++; conversations++; }
-    else if (prev.author !== m.author) p.replies.push(m.ts - prev.ts);
+    else if (prev.author !== m.author) {
+      p.replies.push(m.ts - prev.ts);
+      bump(p.replyTo, prev.author);
+      bump(duos, [m.author, prev.author].sort().join("\u0000"));
+    }
     prev = m;
 
     if (m.kind === "media") { p.media++; totals.media++; continue; }
@@ -55,12 +60,12 @@ export function analyze({ title, platform, messages }) {
     for (const e of text.match(EMOJI) ?? []) { bump(emojis, e); bump(p.emojiMap, e); p.emojis++; }
     if (LAUGH.test(text)) p.laughs++;
     if (text.includes("?")) p.questions++;
-    let n = 0;
-    for (const raw of text.toLowerCase().match(WORD) ?? []) {
-      n++;
-      const w = raw.replace(/['’]+$/, "");
-      if (w.length >= 3 && !STOP.has(w) && !/^\d+$/.test(w)) bump(words, w);
+    const tokens = (text.toLowerCase().match(WORD) ?? []).map((raw) => raw.replace(/['’]+$/, ""));
+    for (const w of tokens) {
+      if (w.length >= 3 && !STOP.has(w) && !/^\d+$/.test(w)) { bump(words, w); bump(p.wordMap, w); }
     }
+    countPhrases(tokens, phrases);
+    const n = tokens.length;
     p.words += n;
     totals.words += n;
   }
@@ -84,7 +89,12 @@ export function analyze({ title, platform, messages }) {
     starts: p.starts,
     startShare: p.starts / conversations,
     medianReply: p.replies.length >= 5 ? median(p.replies) : null,
+    topWords: top(p.wordMap, 5),
+    peakHour: p.hours.indexOf(Math.max(...p.hours)),
+    bestBuddy: top(p.replyTo, 1).map(([name, replies]) => ({ name, replies }))[0] ?? null,
   }));
+  list.forEach((p, i) => { p.rank = i + 1; });
+  signatures(list, total);
 
   // Day-level patterns: streaks, silences, the busiest day.
   const dayKeys = [...days.keys()].sort((a, b) => a - b);
@@ -140,10 +150,68 @@ export function analyze({ title, platform, messages }) {
     streak: { days: streak.days, from: dayIso(streak.from), to: dayIso(streak.to) },
     silence: silence.days ? { days: silence.days, from: dayIso(silence.from), to: dayIso(silence.to) } : null,
     topWords: top(words, 30),
+    phrases: topPhrases(phrases),
+    duos: top(duos, 5).filter(([, n]) => n >= 5).map(([key, n]) => ({ people: key.split("\u0000"), replies: n })),
     topEmojis: top(emojis, 12),
     firstMessage: { author: first.author, ts: first.ts, text: first.kind === "text" ? first.text.slice(0, 160) : first.kind === "media" ? "📎 (a photo or file)" : "(deleted)" },
     awards: awards(list, total),
   };
+}
+
+// Two- and three-word phrases said in at least 3 messages, e.g. "good night".
+// A phrase needs at least one meaningful word, so "and the" never wins.
+function countPhrases(tokens, phrases) {
+  const seen = new Set();
+  for (let n = 2; n <= 3; n++) {
+    for (let i = 0; i + n <= tokens.length; i++) {
+      const gram = tokens.slice(i, i + n);
+      if (!gram.some((w) => w.length >= 3 && !STOP.has(w)) || gram.some((w) => /^\d+$/.test(w))) continue;
+      if (EDGE.has(gram[0]) || EDGE.has(gram[n - 1])) continue;
+      seen.add(gram.join(" "));
+    }
+  }
+  for (const g of seen) bump(phrases, g);
+}
+
+const EDGE = new Set("a an the and or but to of in on at for with from by is was are were be been it this that so".split(" "));
+
+function topPhrases(phrases) {
+  // On a tie, prefer the phrase made of more meaningful words ("happy birthday" over "birthday to you").
+  const density = (g) => { const w = g.split(" "); return w.filter((x) => !STOP.has(x)).length / w.length; };
+  const ranked = top(phrases, 80).filter(([, n]) => n >= 3).sort((a, b) => b[1] - a[1] || density(b[0]) - density(a[0]));
+  const kept = [];
+  for (const [g, n] of ranked) {
+    // Prefer the longer phrase when it covers most uses of a shorter one ("happy birthday maya" over "happy birthday").
+    if (ranked.some(([h, m]) => h !== g && h.includes(g) && m >= n * 0.7)) continue;
+    // Skip fragments of a sentence we already have: similar count and a shared meaningful word.
+    const words = g.split(" ").filter((w) => !STOP.has(w));
+    if (kept.some(([h, m]) => Math.abs(m - n) <= Math.max(1, m * 0.1) && h.split(" ").some((w) => words.includes(w)))) continue;
+    kept.push([g, n]);
+    if (kept.length === 10) break;
+  }
+  return kept;
+}
+
+// Splits a chat into calendar years (when there's enough to wrap) and adds a
+// year-over-year comparison, so people can choose "Wrapped 2026" or all time.
+export function analyzeAll(chat, minMessages = 30) {
+  const all = analyze(chat);
+  const counts = new Map();
+  for (const m of chat.messages) bump(counts, new Date(m.ts).getUTCFullYear());
+  const years = [...counts].filter(([, n]) => n >= minMessages).map(([y]) => y).sort((a, b) => b - a);
+  const byYear = {};
+  if (years.length > 1) {
+    for (const y of years) {
+      byYear[y] = analyze({ ...chat, messages: chat.messages.filter((m) => new Date(m.ts).getUTCFullYear() === y) });
+      byYear[y].period = String(y);
+    }
+    for (const y of years) {
+      const prev = counts.get(y - 1);
+      if (prev) byYear[y].previous = { year: y - 1, messages: prev };
+    }
+  }
+  all.period = "All time";
+  return { all, years, byYear };
 }
 
 export function chronotype(peakHour, nightShare) {
@@ -151,6 +219,35 @@ export function chronotype(peakHour, nightShare) {
   if (peakHour < 11) return { label: "Early Birds", emoji: "🌅", line: "Good morning texts are your love language." };
   if (peakHour < 17) return { label: "Office-Hours Chatters", emoji: "☕", line: "Suspiciously active during working hours." };
   return { label: "Evening People", emoji: "🌆", line: "The day's real business starts after dinner." };
+}
+
+// Gives every person a title from the habit where they stand out most against the
+// group average, so even the quietest member of a 50-person group gets one.
+export function signatures(list, total) {
+  const avg = (fn, xs = list) => xs.reduce((sum, p) => sum + fn(p), 0) / Math.max(1, xs.length);
+  const repliers = list.filter((p) => p.medianReply != null);
+  const traits = [
+    { emoji: "🦉", title: "Night Owl", value: (p) => p.nightShare, detail: (p) => `${pct(p.nightShare)} of their messages after midnight` },
+    { emoji: "✨", title: "Emoji Enthusiast", value: (p) => p.emojiRate, detail: (p) => `${p.emojis.toLocaleString("en")} emojis${p.topEmoji ? `, mostly ${p.topEmoji}` : ""}` },
+    { emoji: "📚", title: "The Novelist", value: (p) => p.avgWords, detail: (p) => `${p.avgWords.toFixed(1)} words per message` },
+    { emoji: "🎬", title: "Conversation Starter", value: (p) => p.startShare / Math.max(p.share, 0.01), detail: (p) => `starts ${pct(p.startShare)} of conversations` },
+    { emoji: "😂", title: "The Laugh Track", value: (p) => p.laughRate, detail: (p) => `laughs at ${pct(p.laughRate)} of messages` },
+    { emoji: "📸", title: "The Photographer", value: (p) => p.media / p.messages, detail: (p) => `${p.media.toLocaleString("en")} photos, videos & files` },
+    { emoji: "❓", title: "The Question Asker", value: (p) => p.questions / Math.max(1, p.messages), detail: (p) => `${p.questions.toLocaleString("en")} questions asked` },
+    { emoji: "👻", title: "The Ghost", value: (p) => p.medianReply ?? 0, detail: (p) => `takes ${duration(p.medianReply)} to reply`, pool: repliers },
+    { emoji: "⚡", title: "Speed Demon", value: (p) => (p.medianReply == null ? 0 : 1 / Math.max(p.medianReply, 30_000)), detail: (p) => `replies in ${duration(p.medianReply)}`, pool: repliers },
+  ].map((t) => ({ ...t, mean: avg(t.value, t.pool ?? list) || 1 }));
+
+  for (const p of list) {
+    if (p.messages < Math.max(5, total * 0.005)) {
+      p.signature = { emoji: "👀", title: "The Lurker", detail: `only ${p.messages} message${p.messages === 1 ? "" : "s"}, but definitely reading` };
+      continue;
+    }
+    const best = traits.map((t) => ({ t, score: t.value(p) / t.mean })).sort((a, b) => b.score - a.score)[0];
+    p.signature = best && best.score >= 1.2
+      ? { emoji: best.t.emoji, title: best.t.title, detail: best.t.detail(p) }
+      : { emoji: "🧩", title: "The Glue", detail: "right in the middle of every conversation" };
+  }
 }
 
 // Deterministic awards; they work even when the AI is switched off.
