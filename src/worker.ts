@@ -5,7 +5,7 @@ import { cleanOutput, isInvalid, sanitize, SCHEMA, SYSTEM } from "./insights.ts"
 type Env = {
   ASSETS: { fetch: (request: Request) => Promise<Response> };
   GEMINI_API_KEY?: string;
-  GEMINI_MODEL?: string;
+  GEMINI_MODELS?: string;
   AI_LIMITER?: { limit: (o: { key: string }) => Promise<{ success: boolean }> };
 };
 type Ctx = { waitUntil: (p: Promise<unknown>) => void };
@@ -24,34 +24,45 @@ async function sha256(s: string) {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-async function gemini(env: Env, model: string, prompt: string): Promise<unknown> {
+// Tries each model in order; an overloaded, rate-limited, retired or slow model
+// falls through to the next one instead of failing the request.
+async function gemini(env: Env, models: string[], prompt: string): Promise<unknown> {
   const body = JSON.stringify({
     systemInstruction: { parts: [{ text: SYSTEM }] },
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     generationConfig: {
       responseMimeType: "application/json",
-      responseSchema: SCHEMA,
+      responseJsonSchema: SCHEMA,
       temperature: 0.9,
-      maxOutputTokens: 1024,
-      thinkingConfig: { thinkingBudget: 0 },
+      maxOutputTokens: 2048,
     },
   });
-  for (let attempt = 0; ; attempt++) {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY! },
-      body,
-      signal: AbortSignal.timeout(25_000),
-    });
-    if ((res.status === 429 || res.status >= 500) && attempt < 1) {
-      await new Promise((r) => setTimeout(r, 800));
-      continue;
+  let lastError = "no models configured";
+  for (const model of models) {
+    const started = Date.now();
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY! },
+        body,
+        signal: AbortSignal.timeout(12_000),
+      });
+      if (!res.ok) {
+        lastError = `${model} returned ${res.status}: ${(await res.text()).slice(0, 160)}`;
+        if (res.status === 400 || res.status === 401 || res.status === 403) break; // our request or key is wrong; another model won't help
+        console.warn("gemini fallback", lastError);
+        continue;
+      }
+      const data = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[]; usageMetadata?: unknown };
+      console.log("gemini", { model, ms: Date.now() - started, usage: data.usageMetadata });
+      const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
+      return JSON.parse(text);
+    } catch (e) {
+      lastError = `${model}: ${e instanceof Error ? e.message : e}`;
+      console.warn("gemini fallback", lastError);
     }
-    if (!res.ok) throw new Error(`Gemini returned ${res.status}: ${(await res.text()).slice(0, 200)}`);
-    const data = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-    const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
-    return JSON.parse(text);
   }
+  throw new Error(lastError);
 }
 
 async function insights(request: Request, env: Env, ctx: Ctx) {
@@ -68,9 +79,9 @@ async function insights(request: Request, env: Env, ctx: Ctx) {
   }
 
   // Identical stats get identical answers: serve repeats from the edge cache.
-  const model = env.GEMINI_MODEL || "gemini-2.5-flash";
+  const models = (env.GEMINI_MODELS || "gemini-flash-latest").split(",").map((m) => m.trim()).filter(Boolean);
   const canonical = JSON.stringify(payload);
-  const key = new Request(`https://cache.chat-wrapped.internal/v1/${await sha256(model + canonical)}`);
+  const key = new Request(`${new URL(request.url).origin}/__cache/insights/${await sha256(canonical)}`);
   const cache = (caches as unknown as { default: Cache }).default;
   const hit = await cache.match(key);
   if (hit) {
@@ -86,7 +97,7 @@ async function insights(request: Request, env: Env, ctx: Ctx) {
   }
 
   try {
-    const out = cleanOutput(await gemini(env, model, `Chat statistics (JSON):\n${canonical}`), payload);
+    const out = cleanOutput(await gemini(env, models, `Chat statistics (JSON):\n${canonical}`), payload);
     const res = json(out, 200, "public, max-age=604800");
     ctx.waitUntil(cache.put(key, res.clone()));
     return res;

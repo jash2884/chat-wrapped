@@ -23,7 +23,7 @@ The interesting engineering constraint: people's chats are about as personal as 
  │              chat entry, never   │  stats   │   validate (schema, sizes)     │
  │              the media)          │ ───────▶ │   edge cache by SHA-256        │
  │   parse.js   WhatsApp iOS/Android│ (no text)│   rate limit per IP            │
- │              + Telegram JSON     │          │   Gemini, JSON schema output   │
+ │              + Telegram JSON     │          │   Gemini + model fallback      │
  │   stats.js   streaks, replies,   │ ◀─────── │   clean + cap model output     │
  │              heatmap, awards     │ verdict  │  static assets + CSP headers   │
  │ Story player · dashboard · PNG   │          └────────────────────────────────┘
@@ -37,7 +37,7 @@ The interesting engineering constraint: people's chats are about as personal as 
 | `public/js/stats.js` | Reply-time medians, conversation starters (6+ hours of silence starts a new conversation), streaks and silences, a weekday × hour heatmap, a gap-filled monthly timeline, top words/emojis and nine deterministic awards. |
 | `public/js/story.js` | Full-screen story with auto-advance, tap/hold/keyboard navigation and reduced-motion support. |
 | `public/js/share.js` | Renders a 1080×1350 summary card on a canvas and opens the native share sheet when available. |
-| `src/worker.ts` | Static assets plus `/api/insights`: validation, per-IP rate limiting, an edge cache keyed by payload hash, and Gemini structured output with a retry. |
+| `src/worker.ts` | Static assets plus `/api/insights`: validation, per-IP rate limiting, an edge cache keyed by payload hash (repeat requests return in ~60 ms), and Gemini structured output with a **model fallback chain**: if a model is overloaded, retired or slow, the next one in `GEMINI_MODELS` answers instead. |
 
 No frameworks, no build step and no npm dependencies.
 

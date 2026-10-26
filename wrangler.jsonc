@@ -6,7 +6,7 @@
   "assets": { "directory": "./public", "binding": "ASSETS", "not_found_handling": "404-page" },
   "routes": [{ "pattern": "wrapped.jashparmar.com", "custom_domain": true }],
   "workers_dev": false,
-  "vars": { "GEMINI_MODEL": "gemini-2.5-flash" },
+  "vars": { "GEMINI_MODELS": "gemini-flash-lite-latest,gemini-flash-latest,gemini-3.8-flash" },
   // Per-IP limit on the AI endpoint; the result is also edge-cached by payload hash.
   "ratelimits": [{ "name": "AI_LIMITER", "namespace_id": "4201", "simple": { "limit": 6, "period": 60 } }],
   "observability": { "enabled": true }

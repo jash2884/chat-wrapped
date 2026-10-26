@@ -93,24 +93,24 @@ Be funny but kind. Tease habits (slow replies, emoji addiction, 2 AM messages) a
 Ground every claim in the numbers. Do not invent events. Keep the language simple and global (no slang that needs explaining).`;
 
 export const SCHEMA = {
-  type: "OBJECT",
+  type: "object",
   properties: {
-    vibe: { type: "STRING", description: "3 to 6 word title capturing the chat's energy" },
-    summary: { type: "STRING", description: "Two short sentences describing the chat's personality" },
+    vibe: { type: "string", description: "3 to 6 word title capturing the chat's energy" },
+    summary: { type: "string", description: "Two short sentences describing the chat's personality" },
     personas: {
-      type: "ARRAY",
+      type: "array",
       description: "One entry per member id",
       items: {
-        type: "OBJECT",
+        type: "object",
         properties: {
-          id: { type: "STRING", description: "Member id such as P1" },
-          title: { type: "STRING", description: "2 to 4 word nickname" },
-          line: { type: "STRING", description: "One playful sentence, at most 20 words, mentioning the id" },
+          id: { type: "string", description: "Member id such as P1" },
+          title: { type: "string", description: "2 to 4 word nickname" },
+          line: { type: "string", description: "One playful sentence, at most 20 words, mentioning the id" },
         },
         required: ["id", "title", "line"],
       },
     },
-    prediction: { type: "STRING", description: "One playful prediction for this chat's next year" },
+    prediction: { type: "string", description: "One playful prediction for this chat's next year" },
   },
   required: ["vibe", "summary", "personas", "prediction"],
 };
