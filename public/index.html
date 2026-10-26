@@ -8,7 +8,15 @@
   <meta name="theme-color" content="#0d0a17" />
   <meta property="og:title" content="Chat Wrapped: your chats, wrapped" />
   <meta property="og:description" content="The story of your group chat in a dozen slides. Private: your messages never leave your device." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://wrapped.jashparmar.com/" />
+  <meta property="og:image" content="https://wrapped.jashparmar.com/og.jpg" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
   <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+  <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -19,7 +27,10 @@
     <a class="logo" href="/" aria-label="Chat Wrapped home">
       <span class="logo-mark" aria-hidden="true"></span>chat<b>wrapped</b>
     </a>
-    <a class="top-link" href="https://github.com/jash2884/chat-wrapped">Source</a>
+    <div class="top-actions">
+      <button id="install" class="btn ghost small" type="button" hidden>Install app</button>
+      <a class="top-link" href="https://github.com/jash2884/chat-wrapped">Source</a>
+    </div>
   </header>
 
   <main>
@@ -42,6 +53,7 @@
           </div>
           <div id="status" class="status" hidden><span class="spinner" aria-hidden="true"></span><span id="status-text" role="status"></span></div>
         </div>
+        <div id="notice" class="notice" role="status" hidden></div>
         <div id="error" class="error" role="alert" hidden></div>
 
         <div class="options">
@@ -65,18 +77,32 @@
           <button data-tab="android" role="tab" aria-selected="false">WhatsApp · Android</button>
           <button data-tab="telegram" role="tab" aria-selected="false">Telegram</button>
         </div>
-        <ol data-panel="ios">
-          <li>Open the chat and tap its name at the top.</li>
-          <li>Scroll down and tap <b>Export Chat</b>.</li>
-          <li>Choose <b>Without Media</b> and save the .zip to Files.</li>
-          <li>Drop that .zip here.</li>
-        </ol>
-        <ol data-panel="android" hidden>
-          <li>Open the chat and tap <b>⋮</b> → <b>More</b> → <b>Export chat</b>.</li>
-          <li>Choose <b>Without media</b>.</li>
-          <li>Save or email the .txt (or .zip) to yourself.</li>
-          <li>Drop it here.</li>
-        </ol>
+        <div data-panel="ios">
+          <ol>
+            <li>Open the chat and tap its name at the top.</li>
+            <li>Scroll down and tap <b>Export Chat</b> → <b>Without Media</b>.</li>
+            <li>Tap <b>Save to Files</b>, then choose that .zip here.</li>
+          </ol>
+          <details class="shortcut">
+            <summary><b>Make it one tap</b> with an iPhone Shortcut</summary>
+            <a id="shortcut-link" class="btn primary small" data-url="" hidden>Get the Chat Wrapped Shortcut</a>
+            <p class="muted">Or build it yourself in a minute, in the Shortcuts app:</p>
+            <ol>
+              <li>Tap <b>+</b>, name it <b>Chat Wrapped</b>. In its settings, turn on <b>Show in Share Sheet</b> and receive <b>Files</b>.</li>
+              <li>Add <b>Save File</b>: turn off <i>Ask Where to Save</i>, set the subpath to <code>Chat Wrapped/</code> and turn on <i>Overwrite</i>.</li>
+              <li>Add <b>Open URLs</b> with <code>https://wrapped.jashparmar.com/?from=shortcut</code>.</li>
+            </ol>
+            <p class="muted">Now Export Chat → <b>Chat Wrapped</b> saves the chat and opens this page, ready to pick it. Websites can't read your Files on their own, which is exactly why this stays private.</p>
+          </details>
+        </div>
+        <div data-panel="android" hidden>
+          <ol>
+            <li>Tap <b>Install app</b> at the top of this page (or Chrome menu → <b>Add to Home screen</b>). One time only.</li>
+            <li>In WhatsApp, open the chat → <b>⋮</b> → <b>More</b> → <b>Export chat</b> → <b>Without media</b>.</li>
+            <li>Pick <b>Chat Wrapped</b> in the share menu. Your Wrapped starts straight away, on your phone.</li>
+          </ol>
+          <p class="muted">Not installed? Save the .txt to your phone and choose it here instead.</p>
+        </div>
         <ol data-panel="telegram" hidden>
           <li>Open <b>Telegram Desktop</b> and the chat you want.</li>
           <li>Click <b>⋮</b> → <b>Export chat history</b>.</li>

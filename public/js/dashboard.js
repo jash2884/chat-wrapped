@@ -79,6 +79,7 @@ export function renderDashboard(el, stats, ai, actions) {
         h("h2", null, s.title)),
       h("div", { class: "dash-actions" },
         h("button", { class: "btn primary", onclick: actions.replay }, "▶ Replay story"),
+        h("button", { class: "btn ghost", onclick: actions.sendToGroup }, "💬 Send to group"),
         h("button", { class: "btn ghost", onclick: actions.share }, "Save card"),
         h("button", { class: "btn ghost", onclick: actions.reset }, "New chat"))),
     h("div", { class: "tiles" },

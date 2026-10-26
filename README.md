@@ -13,6 +13,15 @@ The interesting engineering constraint: people's chats are about as personal as 
 - **The AI sees anonymous numbers only.** Names become `P1…P8` before anything is sent ("P1 replies in 3 min, 21% of messages after midnight"), and the server swaps nothing back; the browser does. Top words are opt-in.
 - **The server re-validates every field** against a strict schema (ids must match `P[1-8]`, words must be single tokens, emojis must be emoji), so the endpoint can't be used as a general-purpose LLM proxy or to smuggle text through.
 
+## One tap from WhatsApp
+
+WhatsApp chats are end-to-end encrypted and no app can read them, so instead of a bot the app plugs into the phone's share sheet:
+
+- **Android:** Chat Wrapped is an installable PWA with a [Web Share Target](https://developer.chrome.com/docs/capabilities/web-apis/web-share-target). WhatsApp → Export chat → **Chat Wrapped** opens the story straight away. The service worker parks the shared file in Cache Storage and the page picks it up, so the chat still never reaches the server (if a share ever hits the server, it redirects without reading the body).
+- **iPhone:** websites can't be share targets on iOS, so the page documents a three-step Shortcut that saves the export and opens the site ready to pick it.
+- **Back into the group:** "Send to the group" opens the share sheet with the summary card and a caption that carries only totals (messages, peak hour, top emoji). Desktop falls back to a `wa.me` link. Link previews come from an Open Graph image.
+- **Offline:** the app shell is cached, so it works with Wi-Fi off, which is the easiest way to prove nothing is uploaded.
+
 ## Architecture
 
 ```
@@ -44,8 +53,9 @@ No frameworks, no build step and no npm dependencies.
 ## Develop
 
 ```bash
-npm test          # 19 tests: parsers, stats, zip reader, API validation
-npm run dev       # wrangler dev on http://localhost:8787
+npm test          # 20 tests: parsers, stats, zip reader, API validation
+npm run dev       # wrangler dev (needs a workers.dev subdomain for the AI binding)
+node scripts/static.js   # static server for PWA/share-target testing on :8792
 ```
 
 AI insights use Gemini when `GEMINI_API_KEY` is set (`npx wrangler secret put GEMINI_API_KEY`) and fall back to Workers AI, which needs no key.

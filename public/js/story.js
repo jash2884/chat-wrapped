@@ -191,7 +191,8 @@ export function buildSlides(stats, ai, actions) {
       h("p", { class: "s-eyebrow" }, "That's a wrap"),
       img,
       h("div", { class: "s-actions" },
-        h("button", { class: "btn light", onclick: actions.share }, "Save / share card"),
+        h("button", { class: "btn light", onclick: actions.sendToGroup }, "💬 Send to the group"),
+        h("button", { class: "btn outline", onclick: actions.share }, "Save image"),
         h("button", { class: "btn outline", onclick: actions.dashboard }, "See every stat"),
         h("button", { class: "btn outline", onclick: actions.replay }, "Replay")));
   });

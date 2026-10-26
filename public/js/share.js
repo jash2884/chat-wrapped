@@ -96,8 +96,44 @@ export async function renderCard(stats, aiState) {
   return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
 }
 
+const SITE = "https://wrapped.jashparmar.com";
+const cardFile = (blob, title) =>
+  new File([blob], `${title.replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "") || "chat"}-wrapped.png`, { type: "image/png" });
+
+// Only totals go in the caption, never names or message text.
+export function groupCaption(stats) {
+  const who = stats.isGroup ? "Our group chat" : "Our chat";
+  return `${who}, wrapped 🎁 ${f.int(stats.totals.messages)} messages, peak hour ${f.hour(stats.peakHour)}, top emoji ${stats.topEmojis[0]?.[0] ?? "💬"}. Make yours in 30 seconds (it never leaves your phone): ${SITE}`;
+}
+
+// Opens the share sheet with the card and a caption so it can go straight into the
+// WhatsApp group. Where files can't be shared (most desktops), it saves the card
+// and opens WhatsApp with the caption instead.
+export async function sendToGroup(blob, stats) {
+  const file = cardFile(blob, stats.title), text = groupCaption(stats);
+  if (navigator.canShare?.({ files: [file], text })) {
+    try {
+      await navigator.share({ files: [file], text });
+      return "shared";
+    } catch (e) {
+      if (e.name === "AbortError") return "cancelled";
+    }
+  }
+  download(file);
+  window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener");
+  return "whatsapp-link";
+}
+
+function download(file) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(file);
+  a.download = file.name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
 export async function shareCard(blob, title) {
-  const file = new File([blob], `${title.replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "") || "chat"}-wrapped.png`, { type: "image/png" });
+  const file = cardFile(blob, title);
   if (navigator.canShare?.({ files: [file] })) {
     try {
       await navigator.share({ files: [file], title: "My chat, wrapped" });
@@ -106,9 +142,5 @@ export async function shareCard(blob, title) {
       if (e.name === "AbortError") return;
     }
   }
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(file);
-  a.download = file.name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  download(file);
 }

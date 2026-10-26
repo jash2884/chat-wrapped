@@ -78,3 +78,11 @@ test("the AI payload is anonymous and names are restored locally", () => {
   assert.deepEqual(insightsPayload(s, { includeWords: true }).payload.topWords, ["noted", "plans", "secret"]); // ties sort alphabetically
   assert.equal(deanonymize("P1 plans, P2 replies, P9 is unknown", names), "Priya Sharma plans, Rahul replies, P9 is unknown");
 });
+
+test("the WhatsApp caption shares totals only", async () => {
+  const { groupCaption } = await import("../public/js/share.js");
+  const messages = [];
+  for (let d = 1; d <= 10; d++) messages.push(msg(at(d, 21), "Priya Sharma", "secret plans 🎉"), msg(at(d, 21, 3), "Rahul", "noted"));
+  const caption = groupCaption(analyze({ title: "Sharma Family", platform: "whatsapp", messages }));
+  assert.equal(caption, "Our chat, wrapped 🎁 20 messages, peak hour 9 PM, top emoji 🎉. Make yours in 30 seconds (it never leaves your phone): https://wrapped.jashparmar.com");
+});

@@ -1,6 +1,6 @@
 import { createInsights } from "./ai.js";
 import { renderDashboard } from "./dashboard.js";
-import { renderCard, shareCard } from "./share.js";
+import { renderCard, sendToGroup, shareCard } from "./share.js";
 import { buildSlides, playStory } from "./story.js";
 
 const $ = (id) => document.getElementById(id);
@@ -34,6 +34,7 @@ function cardBlob() {
 const actions = {
   cardUrl: async () => URL.createObjectURL(await cardBlob()),
   share: async () => shareCard(await cardBlob(), session.stats.title),
+  sendToGroup: async () => sendToGroup(await cardBlob(), session.stats),
   dashboard: () => { story?.close(); },
   replay: () => { story?.close(); startStory(); },
   reset: () => {
@@ -81,9 +82,10 @@ function run(message) {
   worker.postMessage(message);
 }
 
-function takeFile(file) {
+function takeFile(file, { fromShare = false } = {}) {
   if (!file) return;
-  if (!/\.(txt|zip|json)$/i.test(file.name)) {
+  // Share-sheet files sometimes arrive with generic names; the parser decides instead.
+  if (!fromShare && !/\.(txt|zip|json)$/i.test(file.name)) {
     showError("Upload the .txt or .zip from WhatsApp, or result.json from Telegram.");
     return;
   }
@@ -113,4 +115,72 @@ for (const tab of document.querySelectorAll("[data-tab]")) {
     for (const t of document.querySelectorAll("[data-tab]")) t.setAttribute("aria-selected", String(t === tab));
     for (const p of document.querySelectorAll("[data-panel]")) p.hidden = p.dataset.panel !== tab.dataset.tab;
   });
+}
+
+// --- Installable app, share sheet and iPhone Shortcut ---------------------------
+
+const notice = $("notice");
+function showNotice(text) {
+  notice.textContent = text;
+  notice.hidden = !text;
+}
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+}
+
+// Android: the chat was shared from WhatsApp straight into the installed app.
+// The service worker parked it in Cache Storage on this device; pick it up once.
+async function openSharedChat() {
+  const params = new URLSearchParams(location.search);
+  const shared = params.get("shared"), from = params.get("from");
+  if (shared || from) history.replaceState(null, "", "/");
+  if (from === "shortcut") {
+    showNotice("Your chat export is saved in Files → Shortcuts → Chat Wrapped. Tap “Choose file” and pick it.");
+    drop.scrollIntoView({ block: "center" });
+    return;
+  }
+  if (!shared) return;
+  if (shared !== "1") {
+    showError(shared === "empty" ? "Nothing was shared. In WhatsApp, export the chat “Without media” and pick Chat Wrapped." : "Couldn't receive that share. Try choosing the file here instead.");
+    return;
+  }
+  try {
+    const cache = await caches.open("shared-chat");
+    const res = await cache.match("/shared/latest");
+    await cache.delete("/shared/latest");
+    if (!res) { showError("That shared chat has already been opened. Share it again from WhatsApp."); return; }
+    const name = decodeURIComponent(res.headers.get("X-Filename") ?? "chat.txt");
+    takeFile(new File([await res.blob()], name, { type: res.headers.get("Content-Type") ?? "" }), { fromShare: true });
+  } catch {
+    showError("Couldn't open the shared chat. Try choosing the file here instead.");
+  }
+}
+openSharedChat();
+
+// Offer an install button where the browser supports it (Chrome/Edge on Android and desktop).
+let installPrompt = null;
+const installBtn = $("install");
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  installPrompt = e;
+  installBtn.hidden = false;
+});
+installBtn.addEventListener("click", async () => {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  await installPrompt.userChoice.catch(() => {});
+  installPrompt = null;
+  installBtn.hidden = true;
+});
+window.addEventListener("appinstalled", () => {
+  installBtn.hidden = true;
+  showNotice("Installed! Next time, export a chat in WhatsApp and pick Chat Wrapped from the share menu.");
+});
+
+// The iPhone Shortcut link is published from a device; it appears once it's set in the page.
+const shortcutLink = $("shortcut-link");
+if (shortcutLink?.dataset.url) {
+  shortcutLink.href = shortcutLink.dataset.url;
+  shortcutLink.hidden = false;
 }

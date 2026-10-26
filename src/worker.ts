@@ -138,6 +138,9 @@ async function insights(request: Request, env: Env, ctx: Ctx) {
 export default {
   async fetch(request: Request, env: Env, ctx: Ctx): Promise<Response> {
     const { pathname } = new URL(request.url);
+    // Share-sheet posts are normally caught by the service worker on the phone. If one
+    // reaches us (worker not installed yet), don't read the body: just send them home.
+    if (pathname === "/share-target") return Response.redirect(new URL("/?shared=error", request.url).toString(), 303);
     if (!pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
     if (pathname === "/api/health") return json({ status: "ok", ai: Boolean(env.GEMINI_API_KEY || env.AI) });
     if (pathname === "/api/insights") {
