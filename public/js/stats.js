@@ -10,6 +10,26 @@ const NOVEL_WORDS = 90_000;
 const EMOJI = /\p{Extended_Pictographic}(?:️|\p{Emoji_Modifier}|‍\p{Extended_Pictographic}️?)*/gu;
 const LAUGH = /(?:^|[^\p{L}])(?:a?h[ae]h[ae][ha]*|lo+l+|lmf?ao+|rofl)(?!\p{L})|[😂🤣]/iu;
 const LINK = /https?:\/\/\S+|www\.\S+/gi;
+const GM = /\b(?:good\s?morning|gud\s?m(?:o|or)ning|g+m+|morning all|suprabhat)\b/iu;
+const GN = /\b(?:good\s?night|gud\s?n(?:i|ig)ght|g+n+|nighty?\s?night|shubh\s?ratri)\b/iu;
+const HEART = /[❤♥💕💖💗💘💝💞💓🥰😍😘🫶💜💙💚💛🧡🤍🖤🤎]/gu;
+
+// Friendly names for the sites people share most.
+const SITES = [
+  [/(^|\.)instagram\.com$|(^|\.)instagr\.am$/, "Instagram"], [/(^|\.)youtube\.com$|(^|\.)youtu\.be$/, "YouTube"],
+  [/(^|\.)tiktok\.com$/, "TikTok"], [/(^|\.)(twitter|x)\.com$/, "X / Twitter"], [/(^|\.)reddit\.com$|(^|\.)redd\.it$/, "Reddit"],
+  [/(^|\.)spotify\.com$/, "Spotify"], [/(^|\.)linkedin\.com$|(^|\.)lnkd\.in$/, "LinkedIn"], [/(^|\.)amazon\.|(^|\.)amzn\./, "Amazon"],
+  [/(^|\.)google\.com$|(^|\.)goo\.gl$/, "Google"], [/(^|\.)facebook\.com$|(^|\.)fb\.watch$/, "Facebook"], [/(^|\.)netflix\.com$/, "Netflix"],
+  [/(^|\.)github\.com$/, "GitHub"], [/(^|\.)zomato\.com$/, "Zomato"], [/(^|\.)swiggy\.com$/, "Swiggy"], [/(^|\.)chat\.whatsapp\.com$|(^|\.)wa\.me$/, "WhatsApp"],
+];
+function siteName(url) {
+  try {
+    const host = new URL(url.startsWith("http") ? url : `https://${url}`).hostname.replace(/^(www|m|mobile)\./, "");
+    return SITES.find(([re]) => re.test(host))?.[1] ?? host;
+  } catch {
+    return null;
+  }
+}
 const WORD = /[\p{L}\p{N}][\p{L}\p{N}'’]*/gu;
 const STOP = new Set(`the and you that was for are with his they this have from one had word but not what all were when your can said there use each which she how their will other about out many then them these some her would make like him into has look two more write see number way could people than first been who its now find long down day did get come made may part also too just very really yeah yes okay ok its it's i'm im don't dont can't cant i'll ill i've ive you're youre that's thats what's whats didn't didnt doesn't doesnt isn't isnt wasn't wasnt won't wont let's lets got going know think want need much well only even still back here because should over our off any why where after before again being both down few own same such through while those then been has having does doing until against between into during above below again further once let him her hers its ours them theirs what whom yours yourself myself himself herself ourselves themselves media omitted message deleted edited http https www com last anyone someone everyone please who's whos thing things lot gonna wanna gotta guys
 hai hain nahi nhi kya toh bhi aur mai main mein tha thi the hum tum aap ko se ka ki ke ho na haan han ye yeh wo woh jo kar karo kuch abhi bas sab koi kaise kyu kyun raha rahi rahe hoga hogi diya liya`.split(/\s+/));
@@ -23,7 +43,11 @@ const median = (xs) => {
 const dayIso = (day) => new Date(day * DAY).toISOString().slice(0, 10);
 
 function newPerson(name) {
-  return { name, messages: 0, texts: 0, words: 0, media: 0, deleted: 0, emojis: 0, laughs: 0, questions: 0, night: 0, starts: 0, replies: [], emojiMap: new Map(), wordMap: new Map(), replyTo: new Map(), hours: Array(24).fill(0) };
+  return {
+    name, messages: 0, texts: 0, words: 0, media: 0, deleted: 0, emojis: 0, laughs: 0, questions: 0, night: 0, starts: 0, replies: [],
+    emojiMap: new Map(), wordMap: new Map(), replyTo: new Map(), hours: Array(24).fill(0),
+    ends: 0, bursts: 0, maxRun: 0, links: 0, gm: 0, gn: 0, hearts: 0, edits: 0, mediaTypes: new Map(),
+  };
 }
 
 export function analyze({ title, platform, messages }) {
@@ -34,6 +58,11 @@ export function analyze({ title, platform, messages }) {
   const heat = Array.from({ length: 7 }, () => Array(24).fill(0)); // Monday-first × hour
   const totals = { messages: msgs.length, words: 0, media: 0, deleted: 0 };
   let prev = null, conversations = 0;
+  let sameRun = 0, convo = null, marathon = null, longest = null;
+  const sites = new Map(), mediaTypes = new Map();
+  const closeConvo = () => {
+    if (convo && (!marathon || convo.messages > marathon.messages)) marathon = { ...convo, people: convo.people.size };
+  };
 
   for (const m of msgs) {
     let p = people.get(m.author);
@@ -45,18 +74,44 @@ export function analyze({ title, platform, messages }) {
     bump(days, Math.floor(m.ts / DAY));
     bump(months, d.toISOString().slice(0, 7));
     if (hr < 5) p.night++;
-    if (!prev || m.ts - prev.ts >= CONVO_GAP) { p.starts++; conversations++; }
+    if (!prev || m.ts - prev.ts >= CONVO_GAP) {
+      p.starts++;
+      conversations++;
+      if (prev) people.get(prev.author).ends++; // the last word before the silence
+      closeConvo();
+      convo = { start: m.ts, end: m.ts, messages: 0, people: new Set() };
+    }
     else if (prev.author !== m.author) {
       p.replies.push(m.ts - prev.ts);
       bump(p.replyTo, prev.author);
       bump(duos, [m.author, prev.author].sort().join("\u0000"));
     }
+    // Runs of messages by the same person without anyone answering.
+    sameRun = prev && prev.author === m.author && m.ts - prev.ts < CONVO_GAP ? sameRun + 1 : 1;
+    if (sameRun === 3) p.bursts++;
+    if (sameRun > p.maxRun) p.maxRun = sameRun;
+    convo.messages++;
+    convo.end = m.ts;
+    convo.people.add(m.author);
+    if (m.edited) p.edits++;
     prev = m;
 
-    if (m.kind === "media") { p.media++; totals.media++; continue; }
+    if (m.kind === "media") {
+      p.media++;
+      totals.media++;
+      if (m.media) { bump(mediaTypes, m.media); bump(p.mediaTypes, m.media); }
+      continue;
+    }
     if (m.kind === "deleted") { p.deleted++; totals.deleted++; continue; }
     p.texts++;
+    for (const url of m.text.match(LINK) ?? []) {
+      const site = siteName(url);
+      if (site) { bump(sites, site); p.links++; }
+    }
     const text = m.text.replace(LINK, " ");
+    if (GM.test(text)) p.gm++;
+    if (GN.test(text)) p.gn++;
+    p.hearts += (text.match(HEART) ?? []).length;
     for (const e of text.match(EMOJI) ?? []) { bump(emojis, e); bump(p.emojiMap, e); p.emojis++; }
     if (LAUGH.test(text)) p.laughs++;
     if (text.includes("?")) p.questions++;
@@ -66,9 +121,13 @@ export function analyze({ title, platform, messages }) {
     }
     countPhrases(tokens, phrases);
     const n = tokens.length;
+    if (!longest || n > longest.words) longest = { author: m.author, ts: m.ts, words: n, text: m.text.slice(0, 280) };
     p.words += n;
     totals.words += n;
   }
+
+  people.get(prev.author).ends++;
+  closeConvo();
 
   const total = msgs.length;
   const list = [...people.values()].sort((a, b) => b.messages - a.messages).map((p) => ({
@@ -92,6 +151,16 @@ export function analyze({ title, platform, messages }) {
     topWords: top(p.wordMap, 5),
     peakHour: p.hours.indexOf(Math.max(...p.hours)),
     bestBuddy: top(p.replyTo, 1).map(([name, replies]) => ({ name, replies }))[0] ?? null,
+    ends: p.ends,
+    endShare: p.ends / conversations,
+    bursts: p.bursts,
+    maxRun: p.maxRun,
+    links: p.links,
+    gm: p.gm,
+    gn: p.gn,
+    hearts: p.hearts,
+    edits: p.edits,
+    mediaTypes: Object.fromEntries(p.mediaTypes),
   }));
   list.forEach((p, i) => { p.rank = i + 1; });
   signatures(list, total);
@@ -151,6 +220,14 @@ export function analyze({ title, platform, messages }) {
     silence: silence.days ? { days: silence.days, from: dayIso(silence.from), to: dayIso(silence.to) } : null,
     topWords: top(words, 30),
     phrases: topPhrases(phrases),
+    sites: top(sites, 8),
+    mediaTypes: top(mediaTypes, 6),
+    marathon,
+    longestMessage: longest,
+    calendar: [...days].sort((a, b) => a[0] - b[0]).map(([d, n]) => [dayIso(d), n]),
+    replyMatrix: replyMatrix(list, people),
+    quirks: quirks(list, total),
+    weekendShare: (weekdays[5] + weekdays[6]) / total,
     duos: top(duos, 5).filter(([, n]) => n >= 5).map(([key, n]) => ({ people: key.split("\u0000"), replies: n })),
     topEmojis: top(emojis, 12),
     firstMessage: { author: first.author, ts: first.ts, text: first.kind === "text" ? first.text.slice(0, 160) : first.kind === "media" ? "📎 (a photo or file)" : "(deleted)" },
@@ -214,6 +291,44 @@ export function analyzeAll(chat, minMessages = 30) {
   return { all, years, byYear };
 }
 
+// Who answers whom, for the 12 most active people (rows reply to columns).
+function replyMatrix(list, people) {
+  const names = list.slice(0, 12).map((p) => p.name);
+  return { names, counts: names.map((a) => names.map((b) => people.get(a).replyTo.get(b) ?? 0)) };
+}
+
+// Group-habit superlatives that sit alongside the awards.
+function quirks(list, total) {
+  const eligible = list.filter((p) => p.messages >= Math.max(10, total * 0.01));
+  const pick = (score, min = 1) => {
+    const best = eligible.reduce((a, b) => (score(b) > score(a) ? b : a), eligible[0]);
+    return best && score(best) >= min ? best : null;
+  };
+  const out = [];
+  const add = (id, emoji, title, p, detail) => { if (p) out.push({ id, emoji, title, person: p.name, detail }); };
+  const killer = pick((p) => p.endShare / Math.max(p.share, 0.01), 0);
+  add("killer", "🔪", "Conversation Killer", killer, killer && `sent the last message before ${pct(killer.endShare)} of silences`);
+  const burst = pick((p) => p.bursts, 3);
+  add("double", "📨", "Double Texter", burst, burst && `${burst.bursts} times sent 3+ messages in a row (record: ${burst.maxRun})`);
+  const links = pick((p) => p.links, 5);
+  add("links", "🎞️", "The Reel Dealer", links, links && `${links.links} links shared`);
+  const gm = pick((p) => p.gm, 5);
+  add("gm", "🌅", "Good Morning Champion", gm, gm && `said good morning ${gm.gm} times`);
+  const gn = pick((p) => p.gn, 5);
+  add("gn", "🌙", "Good Night Champion", gn, gn && `said good night ${gn.gn} times`);
+  const hearts = pick((p) => p.hearts / p.messages, 0.02);
+  add("hearts", "💕", "The Sweetheart", hearts, hearts && `${hearts.hearts} hearts sent`);
+  const edits = pick((p) => p.edits, 5);
+  add("edits", "✏️", "The Perfectionist", edits, edits && `edited ${edits.edits} messages`);
+  const deleted = pick((p) => p.deleted, 5);
+  add("undo", "🗑️", "The Undo Button", deleted, deleted && `deleted ${deleted.deleted} messages`);
+  const voice = pick((p) => p.mediaTypes.get?.("voice") ?? p.mediaTypes.voice ?? 0, 5);
+  add("voice", "🎙️", "Voice Note Royalty", voice, voice && `${voice.mediaTypes.voice} voice notes`);
+  const sticker = pick((p) => p.mediaTypes.sticker ?? 0, 5);
+  add("sticker", "🧸", "Sticker Spammer", sticker, sticker && `${sticker.mediaTypes.sticker} stickers`);
+  return out;
+}
+
 export function chronotype(peakHour, nightShare) {
   if (nightShare >= 0.12 || peakHour < 4) return { label: "Night Owls", emoji: "🦉", line: `${pct(nightShare)} of messages land between midnight and 5 AM.` };
   if (peakHour < 11) return { label: "Early Birds", emoji: "🌅", line: "Good morning texts are your love language." };
@@ -234,6 +349,10 @@ export function signatures(list, total) {
     { emoji: "😂", title: "The Laugh Track", value: (p) => p.laughRate, detail: (p) => `laughs at ${pct(p.laughRate)} of messages` },
     { emoji: "📸", title: "The Photographer", value: (p) => p.media / p.messages, detail: (p) => `${p.media.toLocaleString("en")} photos, videos & files` },
     { emoji: "❓", title: "The Question Asker", value: (p) => p.questions / Math.max(1, p.messages), detail: (p) => `${p.questions.toLocaleString("en")} questions asked` },
+    { emoji: "🔪", title: "Conversation Killer", value: (p) => p.endShare / Math.max(p.share, 0.01), detail: (p) => `has the last word before ${pct(p.endShare)} of silences` },
+    { emoji: "📨", title: "Double Texter", value: (p) => p.bursts / p.messages, detail: (p) => `${p.bursts} bursts of 3+ messages in a row` },
+    { emoji: "🎞️", title: "The Reel Dealer", value: (p) => p.links / p.messages, detail: (p) => `${p.links} links shared` },
+    { emoji: "💕", title: "The Sweetheart", value: (p) => p.hearts / p.messages, detail: (p) => `${p.hearts} hearts sent` },
     { emoji: "👻", title: "The Ghost", value: (p) => p.medianReply ?? 0, detail: (p) => `takes ${duration(p.medianReply)} to reply`, pool: repliers },
     { emoji: "⚡", title: "Speed Demon", value: (p) => (p.medianReply == null ? 0 : 1 / Math.max(p.medianReply, 30_000)), detail: (p) => `replies in ${duration(p.medianReply)}`, pool: repliers },
   ].map((t) => ({ ...t, mean: avg(t.value, t.pool ?? list) || 1 }));

@@ -15,11 +15,11 @@ function rng(seed) {
 const PEOPLE = {
   Maya: {
     weight: 1.4, reply: 4, hours: [23, 0, 1, 22, 13, 21],
-    lines: ["omggg 😭😭", "i literally cannot sleep 🌙", "this is SO us 😂😂", "okay but hear me out ✨", "pizza tonight??? 🍕🍕", "love you guys 🫶", "WAIT what 😭", "screaming 😂", "who's up 👀", "i need a trip asap ✈️", "no because why is this so funny 😂", "brb crying 😭", "outfit check tomorrow 💅", "the vibes are immaculate ✨✨", "someone call me i'm bored 📞"],
+    lines: ["omggg 😭😭", "i literally cannot sleep 🌙", "this is SO us 😂😂", "okay but hear me out ✨", "pizza tonight??? 🍕🍕", "love you guys 🫶", "WAIT what 😭", "screaming 😂", "who's up 👀", "i need a trip asap ✈️", "no because why is this so funny 😂", "brb crying 😭", "outfit check tomorrow 💅", "the vibes are immaculate ✨✨", "someone call me i'm bored 📞", "good night guys 🌙💕", "love you all ❤️❤️"],
   },
   Arjun: {
     weight: 1.25, reply: 1.2, hours: [9, 12, 18, 19, 21],
-    lines: ["lol", "hahaha", "bro 😂", "on it", "same", "send it", "lmao", "who's driving", "i'm in", "bro what", "hahaha no way", "gym tomorrow 7am?", "i'll book the table", "done ✅", "lol classic", "match tonight anyone?"],
+    lines: ["lol", "hahaha", "bro 😂", "on it", "same", "send it", "lmao", "who's driving", "i'm in", "bro what", "hahaha no way", "gym tomorrow 7am?", "i'll book the table", "done ✅", "lol classic", "match tonight anyone?", "bro watch this https://www.instagram.com/reel/C9xQ2mVt1aZ/ 😂", "https://youtu.be/dQw4w9WgXcQ classic", "this reel is us https://www.instagram.com/reel/C8kLp0aNq3e/"],
   },
   Zoe: {
     weight: 0.85, reply: 7, hours: [8, 10, 17, 19],
@@ -82,7 +82,8 @@ export function demoChat() {
           : party && r() < 0.6 ? pick(BIRTHDAY)
           : k === 0 || r() < 0.25 ? pick(SHARED)
           : pick(PEOPLE[speaker].lines);
-        out.push([t, `${stamp(t)} - ${speaker}: ${text}`]);
+        const edited = speaker === "Zoe" && text.length > 60 && r() < 0.15 ? " <This message was edited>" : "";
+        out.push([t, `${stamp(t)} - ${speaker}: ${text}${edited}`]);
         const next = r() < 0.18 ? speaker : weighted(r, names.filter((n) => n !== speaker), (n) => PEOPLE[n].weight);
         const gap = next === speaker ? 5_000 + r() * 50_000 : -Math.log(1 - r()) * PEOPLE[next].reply * MIN;
         t += Math.max(MIN, gap);

@@ -1,5 +1,6 @@
 // The Wrapped-style story: full-screen slides with auto-advance, tap and keyboard navigation.
 import { countUp, h, reducedMotion, stagger } from "./dom.js";
+import { monthBlocks } from "./calendar.js";
 import * as f from "./format.js";
 
 const DURATION = 7000;
@@ -23,6 +24,10 @@ const THEMES = {
   roll: ["#1d1446", "#5b21b6", "light"],
   duo: ["#ff9ad5", "#7c3aed", "light"],
   phrases: ["#b8f5ff", "#3b82f6", "dark"],
+  marathon: ["#ff7a59", "#7a1cac", "light"],
+  calendar: ["#0f3d2e", "#14b86a", "light"],
+  links: ["#ffffff", "#ffb6e1", "dark"],
+  quirks: ["#00c2a8", "#1d3b8f", "light"],
   outro: ["#17112b", "#3a1f6b", "light"],
 };
 
@@ -129,6 +134,15 @@ export function buildSlides(stats, ai, actions, { you = null } = {}) {
     h("p", { class: "s-title" }, h("span", null, big(s.busiestDay.count)), " messages in one day."),
     h("p", { class: "s-sub" }, "Whatever happened that day, you all had a lot to say about it.")));
 
+  if (s.marathon && s.marathon.messages >= 20) {
+    const m = s.marathon;
+    add("marathon", () => h("div", null,
+      h("p", { class: "s-eyebrow" }, "The marathon"),
+      h("p", { class: "s-big" }, big(m.messages)),
+      h("h2", { class: "s-title" }, "messages in one conversation, without a 6-hour break."),
+      h("p", { class: "s-sub" }, `${f.date(m.start)} · ${f.duration(m.end - m.start)} · ${m.people} ${m.people === 1 ? "person" : "people"}`)));
+  }
+
   add("streak", () => h("div", null,
     h("p", { class: "s-eyebrow" }, "Longest streak"),
     h("p", { class: "s-big" }, big(s.streak.days)),
@@ -137,6 +151,17 @@ export function buildSlides(stats, ai, actions, { you = null } = {}) {
     s.silence
       ? h("p", { class: "s-note" }, `Longest silence: ${s.silence.days} day${s.silence.days === 1 ? "" : "s"} (${f.range(Date.parse(s.silence.from), Date.parse(s.silence.to))}).`)
       : h("p", { class: "s-note" }, "You never went a full day without talking.")));
+
+  if (s.calendar?.length >= 7) {
+    add("calendar", () => {
+      const cal = monthBlocks(s);
+      return h("div", null,
+        h("p", { class: "s-eyebrow" }, "Your year in squares"),
+        h("h2", { class: "s-title" }, `${f.int(cal.active)} days of chat.`),
+        cal.el,
+        h("p", { class: "s-note" }, `${f.pct(s.weekendShare)} of messages on weekends. Brightest square: ${f.date(Date.parse(s.busiestDay.date))}.`));
+    });
+  }
 
   if (s.topWords.length >= 5) {
     add("words", () => {
@@ -154,6 +179,17 @@ export function buildSlides(stats, ai, actions, { you = null } = {}) {
       h("p", { class: "s-eyebrow" }, "Your catchphrases"),
       h("h2", { class: "s-title" }, `“${s.phrases[0][0]}”, ${f.int(s.phrases[0][1])} times.`),
       h("ol", { class: "s-phrases" }, s.phrases.slice(1, 7).map(([g, n]) => h("li", null, h("span", null, `“${g}”`), h("b", null, f.int(n)))))));
+  }
+
+  const linkTotal = (s.sites ?? []).reduce((n, [, c]) => n + c, 0);
+  if (linkTotal >= 10) {
+    const [first, ...rest] = s.sites;
+    const dealer = s.quirks?.find((q) => q.id === "links");
+    add("links", () => h("div", null,
+      h("p", { class: "s-eyebrow" }, "Your feed"),
+      h("h2", { class: "s-title" }, `${f.int(linkTotal)} links shared. ${first[0]} won.`),
+      bars(s.sites.slice(0, 5).map(([site, n]) => ({ label: site, value: n, text: f.int(n) })), first[1]),
+      dealer ? h("p", { class: "s-note" }, `🎞️ Reel dealer: ${dealer.person === you ? "You" : dealer.person} (${dealer.detail}).`) : null));
   }
 
   if (s.topEmojis.length >= 3) {
@@ -204,6 +240,17 @@ export function buildSlides(stats, ai, actions, { you = null } = {}) {
           h("b", null, a.title),
           h("span", null, a.person),
           h("small", null, a.detail)))))));
+  }
+
+  if (s.quirks?.length >= 2) {
+    add("quirks", () => h("div", null,
+      h("p", { class: "s-eyebrow" }, "Group habits"),
+      stagger(h("div", { class: "s-awards" }, s.quirks.slice(0, 8).map((q) =>
+        h("div", { class: "s-award" },
+          h("span", { class: "s-award-emoji" }, q.emoji),
+          h("b", null, q.title),
+          h("span", null, q.person === you ? "You" : q.person),
+          h("small", null, q.detail)))))));
   }
 
   if (ai.get().status !== "off") {

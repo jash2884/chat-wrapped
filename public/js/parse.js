@@ -13,6 +13,19 @@ const DELETED = /^(?:this message was deleted|you deleted this message|message d
 const EDITED = /\s*<this message was edited>$/i;
 const ENCRYPTION = /messages and calls are end-to-end encrypted/i;
 
+// iPhone exports name the media type; Android only says "<Media omitted>".
+function mediaType(body) {
+  const b = body.toLowerCase();
+  if (/sticker/.test(b)) return "sticker";
+  if (/\bgif\b/.test(b)) return "gif";
+  if (/audio|voice|\.opus|ptt-/.test(b)) return "voice";
+  if (/video|\.mp4/.test(b)) return "video";
+  if (/image|photo|\.jpe?g|\.png|\.webp/.test(b)) return "photo";
+  if (/document|\.pdf|\.docx?/.test(b)) return "document";
+  return "other";
+}
+const TELEGRAM_MEDIA = { sticker: "sticker", voice_message: "voice", audio_file: "voice", video_message: "video", video_file: "video", animation: "gif" };
+
 function titleFromFilename(name) {
   const base = name.split(/[\\/]/).pop().replace(/\.(txt|zip|json)$/i, "").trim();
   const m = /^whatsapp chat (?:with|-)\s*(.+)$/i.exec(base);
@@ -82,13 +95,18 @@ export function parseWhatsApp(raw, filename = "") {
     const author = it.rest.slice(0, sep).replace(BIDI, "").trim();
     let body = it.rest.slice(sep + 2);
     const marked = /^[‎‏]/.test(body); // iOS prefixes notices with a direction mark
-    body = body.replace(BIDI, "").replace(EDITED, "").trim();
+    body = body.replace(BIDI, "");
+    const edited = EDITED.test(body);
+    body = body.replace(EDITED, "").trim();
     if (!author || !body) continue;
     let kind = "text";
     if (MEDIA.test(body)) kind = "media";
     else if (DELETED.test(body)) kind = "deleted";
     else if (marked || ENCRYPTION.test(body)) continue;
-    messages.push({ ts, author, text: kind === "text" ? body : "", kind });
+    const msg = { ts, author, text: kind === "text" ? body : "", kind };
+    if (kind === "media") msg.media = mediaType(body);
+    if (edited) msg.edited = true;
+    messages.push(msg);
   }
   return { title: title ?? "Your chat", platform: "whatsapp", messages };
 }
@@ -109,7 +127,10 @@ export function parseTelegram(data) {
       : Array.isArray(m.text) ? m.text.map((t) => (typeof t === "string" ? t : t?.text ?? "")).join("") : "").trim();
     const media = Boolean(m.photo || m.file || m.media_type || m.sticker_emoji);
     if (!text && !media) continue;
-    messages.push({ ts, author: String(m.from ?? "Deleted Account").trim() || "Unknown", text, kind: text ? "text" : "media" });
+    const msg = { ts, author: String(m.from ?? "Deleted Account").trim() || "Unknown", text, kind: text ? "text" : "media" };
+    if (!text) msg.media = m.photo ? "photo" : TELEGRAM_MEDIA[m.media_type] ?? "other";
+    if (m.edited) msg.edited = true;
+    messages.push(msg);
   }
   return { title: chat.name || "Telegram chat", platform: "telegram", messages };
 }

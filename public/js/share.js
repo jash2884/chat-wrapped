@@ -144,3 +144,84 @@ export async function shareCard(blob, title) {
   }
   download(file);
 }
+
+// A card for one person, so everyone in the group can post their own.
+export async function renderPersonCard(stats, name, you) {
+  const p = stats.people.find((x) => x.name === name);
+  await Promise.all([document.fonts.load(`800 80px 'Bricolage Grotesque'`), document.fonts.load(`600 30px 'Inter'`)]).catch(() => {});
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  const bg = ctx.createLinearGradient(0, 0, W, H);
+  bg.addColorStop(0, "#ffc53d");
+  bg.addColorStop(0.45, "#ff4fa3");
+  bg.addColorStop(1, "#2a0a5e");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  const shown = name === you ? "You" : name;
+  ctx.fillStyle = "rgba(255,255,255,.85)";
+  ctx.font = `700 30px ${BODY}`;
+  ctx.fillText(fit(ctx, `${stats.title} · ${stats.period && stats.period !== "All time" ? stats.period : "Wrapped"}`.toUpperCase(), W - 160, 30, 700, BODY), 80, 120);
+  ctx.font = `800 120px ${DISPLAY}`;
+  ctx.fillText(p.signature.emoji, 80, 290);
+  ctx.fillStyle = "#fff";
+  ctx.fillText(fit(ctx, shown, W - 160, 96, 800, DISPLAY), 80, 420);
+  ctx.fillText(fit(ctx, p.signature.title, W - 160, 72, 800, DISPLAY), 80, 510);
+  ctx.fillStyle = "rgba(255,255,255,.9)";
+  ctx.fillText(fit(ctx, p.signature.detail, W - 160, 36, 600, BODY), 80, 570);
+
+  const tiles = [
+    ["Rank", `#${p.rank} of ${stats.people.length}`],
+    ["Messages", `${f.int(p.messages)} (${f.pct(p.share)})`],
+    ["Most active", f.hour(p.peakHour)],
+    ["Top emoji", p.topEmoji ?? "—"],
+    ["Reply time", p.medianReply == null ? "—" : f.duration(p.medianReply)],
+    ["Chat bestie", p.bestBuddy ? (p.bestBuddy.name === you ? "You" : p.bestBuddy.name.split(/\s+/)[0]) : "—"],
+  ];
+  const tw = (W - 160 - 30) / 2, th = 170;
+  tiles.forEach(([label, value], i) => {
+    const x = 80 + (i % 2) * (tw + 30), y = 640 + Math.floor(i / 2) * (th + 26);
+    ctx.fillStyle = "rgba(20,8,40,.32)";
+    roundRect(ctx, x, y, tw, th, 30);
+    ctx.fillStyle = "rgba(255,255,255,.75)";
+    ctx.font = `600 26px ${BODY}`;
+    ctx.fillText(label.toUpperCase(), x + 32, y + 56);
+    ctx.fillStyle = "#fff";
+    ctx.fillText(fit(ctx, value, tw - 64, 56, 800, DISPLAY), x + 32, y + 130);
+  });
+  ctx.fillStyle = "rgba(255,255,255,.75)";
+  ctx.font = `600 28px ${BODY}`;
+  ctx.fillText("wrapped.jashparmar.com", 80, H - 50);
+  return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+}
+
+export async function sharePersonCard(stats, name, you) {
+  const blob = await renderPersonCard(stats, name, you);
+  const p = stats.people.find((x) => x.name === name);
+  const file = cardFile(blob, `${stats.title}-${name}`);
+  const text = `${name === you ? "I'm" : `${name} is`} ${p.signature.title} ${p.signature.emoji} in our chat Wrapped. Get yours: ${SITE}`;
+  if (navigator.canShare?.({ files: [file] })) {
+    try { await navigator.share({ files: [file], text }); return; } catch (e) { if (e.name === "AbortError") return; }
+  }
+  download(file);
+}
+
+// Everyone's numbers as a spreadsheet, for people who want to dig in.
+export function downloadCsv(stats) {
+  const cols = [
+    ["Rank", (p) => p.rank], ["Name", (p) => p.name], ["Title", (p) => p.signature.title], ["Messages", (p) => p.messages],
+    ["Share %", (p) => (p.share * 100).toFixed(1)], ["Words", (p) => p.words], ["Words per message", (p) => p.avgWords.toFixed(1)],
+    ["Median reply (min)", (p) => (p.medianReply == null ? "" : (p.medianReply / 60_000).toFixed(1))], ["Conversations started", (p) => p.starts],
+    ["Last word before silence", (p) => p.ends], ["Night messages %", (p) => (p.nightShare * 100).toFixed(1)], ["Emojis", (p) => p.emojis],
+    ["Top emoji", (p) => p.topEmoji ?? ""], ["Hearts", (p) => p.hearts], ["Laughs", (p) => p.laughs], ["Questions", (p) => p.questions],
+    ["Links", (p) => p.links], ["Media", (p) => p.media], ["Deleted", (p) => p.deleted], ["Edited", (p) => p.edits],
+    ["Good mornings", (p) => p.gm], ["Good nights", (p) => p.gn], ["Bursts of 3+", (p) => p.bursts], ["Most active hour", (p) => p.peakHour],
+    ["Chat bestie", (p) => p.bestBuddy?.name ?? ""], ["Top words", (p) => p.topWords.map(([w]) => w).join(" ")],
+  ];
+  // Quote every cell; a leading = + - @ is neutralised so spreadsheets don't run it as a formula.
+  const cell = (v) => `"${String(v).replace(/^([=+\-@])/, "'$1").replace(/"/g, '""')}"`;
+  const csv = [cols.map(([h]) => cell(h)), ...stats.people.map((p) => cols.map(([, fn]) => cell(fn(p))))].map((r) => r.join(",")).join("\r\n");
+  download(new File(["﻿" + csv], `${stats.title.replace(/[^\p{L}\p{N}]+/gu, "-") || "chat"}-stats.csv`, { type: "text/csv" }));
+}

@@ -4,6 +4,15 @@
 
 **Live:** https://wrapped.jashparmar.com · try the built-in demo chat, no export needed.
 
+## What you get
+
+A story of 20+ slides and a full stats page:
+- **Totals and rhythm:** messages, words, prime time, a weekday × hour heatmap, a calendar of every day, busiest day, streaks, silences, the longest conversation and the longest message.
+- **Every person, not just the top few:** rank, a personal title from their standout habit (Night Owl, Ghost, Double Texter, Reel Dealer, Lurker…), reply speed, chat bestie, top words and emoji, and a shareable card each.
+- **Group dynamics:** who replies to whom, the dynamic duo, conversation starters and killers, catchphrases, shared links by site, good-morning and good-night champions.
+- **Your Wrapped:** pick which person is you for personal slides; pick a year ("2026 Wrapped") with a year-over-year comparison.
+- **Play with it:** search any word or emoji ("how many times did we say bro?"), a "guess who said it" quiz, CSV export.
+
 ## Private by design
 
 The interesting engineering constraint: people's chats are about as personal as data gets, so the app is built so that **message text never leaves the device**.
@@ -61,7 +70,7 @@ No frameworks, no build step and no npm dependencies.
 ## Develop
 
 ```bash
-npm test          # 24 tests: parsers, stats, zip reader, API validation
+npm test          # 32 tests: parsers, stats, zip reader, API validation
 npm run dev       # wrangler dev (needs a workers.dev subdomain for the AI binding)
 node scripts/static.js   # static server for PWA/share-target testing on :8792
 node scripts/compare.js A.zip B.txt   # explain why two phones' exports of one chat differ

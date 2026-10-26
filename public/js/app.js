@@ -1,6 +1,6 @@
 import { createInsights } from "./ai.js";
 import { renderDashboard } from "./dashboard.js";
-import { renderCard, sendToGroup, shareCard } from "./share.js";
+import { downloadCsv, renderCard, sendToGroup, shareCard, sharePersonCard } from "./share.js";
 import { askSetup } from "./setup.js";
 import { buildSlides, playStory } from "./story.js";
 import { track } from "./track.js";
@@ -41,7 +41,14 @@ const actions = {
   dashboard: () => { track("dashboard"); story?.close(); },
   replay: () => { story?.close(); startStory(); },
   setPeriod: (period) => { applySelection({ period, you: session.you }); },
+  search: (query) => { track("search"); return ask("search", { query }); },
+  quiz: () => { track("quiz"); return ask("quiz", { people: session.stats.people.map((p) => ({ name: p.name })), seed: Date.now() % 2147483647 }); },
+  personCard: async (name) => { track("person_card"); return sharePersonCard(session.stats, name, session.you); },
+  exportCsv: () => { track("export_csv"); downloadCsv(session.stats); },
+  quizDone: () => track("quiz_done"),
   reset: () => {
+    chatWorker?.terminate();
+    chatWorker = null;
     session = null;
     dashboard.hidden = true;
     dashboard.replaceChildren();
@@ -72,16 +79,31 @@ function applySelection({ period, you }) {
   renderDashboard(dashboard, stats, ai, actions, { years: result.years, period: session.period, you });
 }
 
+// The worker that read the chat stays alive to answer searches and quiz requests.
+let chatWorker = null;
+const pending = new Map();
+let nextId = 1;
+function ask(type, payload) {
+  if (!chatWorker) return Promise.resolve(null);
+  const id = nextId++;
+  return new Promise((resolve) => {
+    pending.set(id, resolve);
+    chatWorker.postMessage({ type, id, period: session?.period, ...payload });
+  });
+}
+
 function run(message) {
   if (busy) return;
   showError("");
   setBusy(true, "Starting…");
+  chatWorker?.terminate();
   const worker = new Worker(new URL("./analyze.worker.js", import.meta.url), { type: "module" });
+  chatWorker = worker;
   worker.onmessage = async ({ data }) => {
     if (data.type === "progress") { statusText.textContent = data.step; return; }
-    worker.terminate();
+    if (data.type === "answer") { pending.get(data.id)?.(data.answer); pending.delete(data.id); return; }
     setBusy(false);
-    if (data.type === "error") { track("parse_error"); showError(data.error); return; }
+    if (data.type === "error") { worker.terminate(); chatWorker = null; track("parse_error"); showError(data.error); return; }
     const result = data.result;
     track(`wrapped_${result.all.platform}`);
     const needsSetup = result.all.people.length > 1 || result.years.length > 1;
@@ -92,6 +114,7 @@ function run(message) {
   };
   worker.onerror = () => {
     worker.terminate();
+    chatWorker = null;
     setBusy(false);
     showError("Something went wrong while reading that file. Try exporting the chat again.");
   };
