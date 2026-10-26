@@ -37,7 +37,8 @@ test("model output is trimmed, capped and limited to known members", () => {
     prediction: "More pizza.",
   }, payload);
   assert.equal(out.vibe, "Chaotic good energy");
-  assert.equal(out.summary.length, 360);
+  assert.equal(out.summary, `${"x".repeat(359)}…`);
+  assert.equal(cleanOutput({ vibe: "This group loves to chat with an average of twelve messages per day", summary: "s" }, payload).vibe, "This group loves to chat with an average of twelve messages…");
   assert.deepEqual(out.personas, [{ id: "P1", title: "Night Queen", line: "P1 types at 2 AM." }]);
   assert.throws(() => cleanOutput({ personas: [] }, payload), /incomplete/);
 });

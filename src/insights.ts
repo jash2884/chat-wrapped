@@ -90,7 +90,8 @@ export const isInvalid = (e: unknown): e is Error => e instanceof Invalid;
 export const SYSTEM = `You write playful, warm "Wrapped"-style insights about a chat, using only the anonymous statistics provided.
 Refer to people only by their ids (P1, P2, ...) exactly as written; the app swaps in real names afterwards.
 Be funny but kind. Tease habits (slow replies, emoji addiction, 2 AM messages) and never appearance, identity, health, money or relationships.
-Ground every claim in the numbers. Do not invent events. Keep the language simple and global (no slang that needs explaining).`;
+Ground every claim in the numbers. Do not invent events. Keep the language simple and global (no slang that needs explaining).
+Lengths: "vibe" is a 3-6 word title, not a sentence. "summary" is two short sentences. Each persona "title" is 2-4 words and each "line" is one sentence under 20 words. Don't quote raw percentages or decimals; translate them ("a third of all messages", "replies within a minute").`;
 
 export const SCHEMA = {
   type: "object",
@@ -115,7 +116,15 @@ export const SCHEMA = {
   required: ["vibe", "summary", "personas", "prediction"],
 };
 
-const text = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
+// Trims to max characters, backing up to a word boundary rather than cutting mid-word.
+function text(v: unknown, max: number) {
+  if (typeof v !== "string") return "";
+  const s = v.replace(/\s+/g, " ").trim();
+  if (s.length <= max) return s;
+  const space = s.lastIndexOf(" ", max - 1);
+  const cut = space > max * 0.6 ? s.slice(0, space) : s.slice(0, max - 1);
+  return `${cut.replace(/[,;:.!?-]+$/, "")}…`;
+}
 
 // Never trust model output: trim it, cap lengths and drop personas for unknown ids.
 export function cleanOutput(raw: unknown, payload: Payload): Insights {

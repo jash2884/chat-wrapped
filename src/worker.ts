@@ -6,6 +6,8 @@ type Env = {
   ASSETS: { fetch: (request: Request) => Promise<Response> };
   GEMINI_API_KEY?: string;
   GEMINI_MODELS?: string;
+  WORKERS_AI_MODEL?: string;
+  AI?: { run: (model: string, input: unknown) => Promise<{ response?: unknown }> };
   AI_LIMITER?: { limit: (o: { key: string }) => Promise<{ success: boolean }> };
 };
 type Ctx = { waitUntil: (p: Promise<unknown>) => void };
@@ -24,8 +26,8 @@ async function sha256(s: string) {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-// Tries each model in order; an overloaded, rate-limited, retired or slow model
-// falls through to the next one instead of failing the request.
+// Tries each Gemini model in order; an overloaded, rate-limited, retired or slow
+// model falls through to the next one instead of failing the request.
 async function gemini(env: Env, models: string[], prompt: string): Promise<unknown> {
   const body = JSON.stringify({
     systemInstruction: { parts: [{ text: SYSTEM }] },
@@ -65,8 +67,35 @@ async function gemini(env: Env, models: string[], prompt: string): Promise<unkno
   throw new Error(lastError);
 }
 
+// Last resort: an open model on Cloudflare Workers AI. Same account, no API key,
+// free daily allowance, and it doesn't share Gemini's free-tier congestion.
+async function workersAi(env: Env, prompt: string): Promise<unknown> {
+  const model = env.WORKERS_AI_MODEL || "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+  const started = Date.now();
+  const out = await env.AI!.run(model, {
+    messages: [{ role: "system", content: SYSTEM }, { role: "user", content: prompt }],
+    response_format: { type: "json_schema", json_schema: SCHEMA },
+    temperature: 0.9,
+    max_tokens: 1024,
+  });
+  console.log("workers-ai", { model, ms: Date.now() - started });
+  return typeof out.response === "string" ? JSON.parse(out.response) : out.response;
+}
+
+async function generate(env: Env, prompt: string): Promise<unknown> {
+  const errors: string[] = [];
+  if (env.GEMINI_API_KEY) {
+    const models = (env.GEMINI_MODELS || "gemini-flash-latest").split(",").map((m) => m.trim()).filter(Boolean);
+    try { return await gemini(env, models, prompt); } catch (e) { errors.push(e instanceof Error ? e.message : String(e)); }
+  }
+  if (env.AI) {
+    try { return await workersAi(env, prompt); } catch (e) { errors.push(`workers-ai: ${e instanceof Error ? e.message : e}`); }
+  }
+  throw new Error(errors.join(" | ") || "no AI provider configured");
+}
+
 async function insights(request: Request, env: Env, ctx: Ctx) {
-  if (!env.GEMINI_API_KEY) return json({ error: "AI insights aren't switched on for this site yet." }, 503);
+  if (!env.GEMINI_API_KEY && !env.AI) return json({ error: "AI insights aren't switched on for this site yet." }, 503);
   if (Number(request.headers.get("content-length") ?? 0) > MAX_BODY) return json({ error: "Request too large." }, 413);
   const raw = await request.text();
   if (raw.length > MAX_BODY) return json({ error: "Request too large." }, 413);
@@ -79,7 +108,6 @@ async function insights(request: Request, env: Env, ctx: Ctx) {
   }
 
   // Identical stats get identical answers: serve repeats from the edge cache.
-  const models = (env.GEMINI_MODELS || "gemini-flash-latest").split(",").map((m) => m.trim()).filter(Boolean);
   const canonical = JSON.stringify(payload);
   const key = new Request(`${new URL(request.url).origin}/__cache/insights/${await sha256(canonical)}`);
   const cache = (caches as unknown as { default: Cache }).default;
@@ -97,7 +125,7 @@ async function insights(request: Request, env: Env, ctx: Ctx) {
   }
 
   try {
-    const out = cleanOutput(await gemini(env, models, `Chat statistics (JSON):\n${canonical}`), payload);
+    const out = cleanOutput(await generate(env, `Chat statistics (JSON):\n${canonical}`), payload);
     const res = json(out, 200, "public, max-age=604800");
     ctx.waitUntil(cache.put(key, res.clone()));
     return res;
@@ -111,7 +139,7 @@ export default {
   async fetch(request: Request, env: Env, ctx: Ctx): Promise<Response> {
     const { pathname } = new URL(request.url);
     if (!pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
-    if (pathname === "/api/health") return json({ status: "ok", ai: Boolean(env.GEMINI_API_KEY) });
+    if (pathname === "/api/health") return json({ status: "ok", ai: Boolean(env.GEMINI_API_KEY || env.AI) });
     if (pathname === "/api/insights") {
       return request.method === "POST" ? insights(request, env, ctx) : json({ error: "Use POST." }, 405);
     }
