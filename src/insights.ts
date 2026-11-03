@@ -11,15 +11,20 @@ export type Payload = {
   peakHour: number; peakWeekday: string; chronotype: string; streakDays: number; longestSilenceDays: number;
   busiestDayMessages: number; topEmojis: string[]; topWords: string[]; members: Member[];
   awards: { award: string; id: string }[];
+  phrases: { text: string; total: number; by: { id: string; n: number }[] }[];
   you: string | null;
 };
-export type Insights = { vibe: string; summary: string; personas: { id: string; title: string; line: string }[]; prediction: string };
+export type Insights = {
+  headline: string; vibe: string; summary: string; personas: { id: string; title: string; line: string }[]; prediction: string;
+  verdict: string; tip: string; jokes: { phrase: string; caption: string }[];
+};
 
 const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const CHRONOTYPES = ["Night Owls", "Early Birds", "Office-Hours Chatters", "Evening People"];
 const AWARDS = ["The Chatterbox", "Speed Demon", "The Ghost", "Conversation Starter", "Night Owl", "The Novelist", "Emoji Royalty", "The Laugh Track", "The Photographer"];
 const EMOJI = /^[\p{Extended_Pictographic}\p{Emoji_Modifier}‍️]{1,16}$/u;
 const WORD = /^[\p{L}\p{N}'’]{1,24}$/u;
+const PHRASE = /^[\p{L}\p{N}'’]{1,24}(?: [\p{L}\p{N}'’]{1,24}){1,2}$/u;
 const ID = /^P[1-8]$/;
 
 class Invalid extends Error {}
@@ -84,6 +89,19 @@ export function sanitize(input: unknown): Payload {
       if (typeof o.id !== "string" || !ids.has(o.id)) throw new Invalid("Award refers to an unknown member.");
       return { award: oneOf(o.award, AWARDS, "award"), id: o.id };
     }),
+    phrases: list(p.phrases ?? [], 10, "phrases", (x) => {
+      const o = (x ?? {}) as Record<string, unknown>;
+      if (typeof o.text !== "string" || !PHRASE.test(o.text)) throw new Invalid("Unexpected phrase value.");
+      return {
+        text: o.text,
+        total: num(o.total, 1, 1e7, "phrase total"),
+        by: list(o.by, 8, "phrase by", (b) => {
+          const e = (b ?? {}) as Record<string, unknown>;
+          if (typeof e.id !== "string" || !ids.has(e.id)) throw new Invalid("Phrase refers to an unknown member.");
+          return { id: e.id, n: num(e.n, 0, 1e7, "phrase count") };
+        }),
+      };
+    }),
     you: youId(p.you, ids),
   };
 }
@@ -99,11 +117,16 @@ Refer to people only by their ids (P1, P2, ...) exactly as written; the app swap
 If "you" is set, that member is the reader: write about them in the second person with the word "You" instead of their id, with matching verbs (e.g. "You reply fastest and never miss a joke").
 Be funny but kind. Tease habits (slow replies, emoji addiction, 2 AM messages) and never appearance, identity, health, money or relationships.
 Ground every claim in the numbers. Do not invent events. Keep the language simple and global (no slang that needs explaining).
+Write like a sharp friend who has read the whole chat, not like an analytics report. Be specific: lean on the most surprising number or phrase rather than generic praise.
+"headline" is an episode-style title of 4 to 10 words built on concrete details from the stats or phrases, like "One Deposit, Three Excuses and a 2 AM Habit" or "Forty Good Mornings and One Reply". Prefer numbers and phrases over ids in the headline.
+"jokes" picks up to 3 entries from "phrases" that read like the chat's running jokes or habits (promises, excuses, nicknames, rituals), never plain filler like "see you" or anything that looks like a name, address or number. Copy "phrase" exactly as given. "caption" is one short line under 12 words about who says it most, using the counts in "by" (e.g. "P2 has promised this 12 times. P1, once."). Return an empty list if no phrases are given or none are fun.
+"verdict" is the honest bottom line in one or two sentences: who holds this chat together, who coasts, what the pattern really is. Fair to everyone, never cruel. "tip" is one practical, playful suggestion under 20 words for the chat to try.
 Lengths: "vibe" is a 3-6 word title, not a sentence. "summary" is two short sentences. Each persona "title" is 2-4 words and each "line" is one sentence under 20 words. Don't quote raw percentages or decimals; translate them ("a third of all messages", "replies within a minute").`;
 
 export const SCHEMA = {
   type: "object",
   properties: {
+    headline: { type: "string", description: "4 to 10 word episode-style title built on concrete details" },
     vibe: { type: "string", description: "3 to 6 word title capturing the chat's energy" },
     summary: { type: "string", description: "Two short sentences describing the chat's personality" },
     personas: {
@@ -120,8 +143,22 @@ export const SCHEMA = {
       },
     },
     prediction: { type: "string", description: "One playful prediction for this chat's next year" },
+    jokes: {
+      type: "array",
+      description: "Up to 3 running jokes chosen from the given phrases",
+      items: {
+        type: "object",
+        properties: {
+          phrase: { type: "string", description: "A phrase copied exactly from the input" },
+          caption: { type: "string", description: "Under 12 words on who says it most, using member ids" },
+        },
+        required: ["phrase", "caption"],
+      },
+    },
+    verdict: { type: "string", description: "The honest bottom line in one or two sentences" },
+    tip: { type: "string", description: "One practical, playful suggestion under 20 words" },
   },
-  required: ["vibe", "summary", "personas", "prediction"],
+  required: ["headline", "vibe", "summary", "personas", "prediction", "jokes", "verdict", "tip"],
 };
 
 // Trims to max characters, backing up to a word boundary rather than cutting mid-word.
@@ -144,7 +181,19 @@ export function cleanOutput(raw: unknown, payload: Payload): Insights {
     .filter((x) => typeof x.id === "string" && ids.has(x.id) && !seen.has(x.id) && seen.add(x.id))
     .map((x) => ({ id: x.id as string, title: text(x.title, 40), line: text(x.line, 180) }))
     .filter((x) => x.title && x.line);
-  const out = { vibe: text(o.vibe, 60), summary: text(o.summary, 360), personas, prediction: text(o.prediction, 220) };
+  const phrases = new Set(payload.phrases.map((p) => p.text));
+  const picked = new Set<string>();
+  const jokes = (Array.isArray(o.jokes) ? o.jokes : [])
+    .map((x) => (x ?? {}) as Record<string, unknown>)
+    .filter((x) => typeof x.phrase === "string" && phrases.has(x.phrase) && !picked.has(x.phrase) && picked.add(x.phrase))
+    .map((x) => ({ phrase: x.phrase as string, caption: text(x.caption, 100) }))
+    .slice(0, 3);
+  const vibe = text(o.vibe, 60);
+  const out = {
+    headline: text(o.headline, 80) || vibe,
+    vibe, summary: text(o.summary, 360), personas, prediction: text(o.prediction, 220),
+    verdict: text(o.verdict, 300), tip: text(o.tip, 160), jokes,
+  };
   if (!out.vibe || !out.summary) throw new Error("The model returned an incomplete answer.");
   return out;
 }

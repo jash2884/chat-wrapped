@@ -28,6 +28,7 @@ const THEMES = {
   calendar: ["#0f3d2e", "#14b86a", "light"],
   links: ["#ffffff", "#ffb6e1", "dark"],
   quirks: ["#00c2a8", "#1d3b8f", "light"],
+  verdict: ["#0b0b12", "#3b0d4f", "light"],
   outro: ["#17112b", "#3a1f6b", "light"],
 };
 
@@ -47,6 +48,25 @@ function heatGrid(heat) {
     heat.flatMap((row) => row.map((v) => h("i", { style: `--o:${(0.12 + 0.88 * (v / max)).toFixed(2)}` }))));
 }
 
+// Renders part of a slide from the AI state and re-renders when the answer lands,
+// so a slide shown before the AI is ready fills itself in.
+function live(ai, el, render) {
+  const draw = (st) => el.replaceChildren(...[render(st)].flat().filter(Boolean));
+  draw(ai.get());
+  el.cleanup = ai.subscribe(draw);
+  return el;
+}
+
+// Up to three running jokes with who says each most. The AI picks them when it
+// can; otherwise the phrases more than one person says come first.
+function pickJokes(phrases, st) {
+  const byText = new Map(phrases.map((p) => [p[0], p]));
+  const fromAi = st.status === "ready" ? st.data.jokes.filter((j) => byText.has(j.phrase)).map((j) => ({ p: byText.get(j.phrase), caption: j.caption })) : [];
+  if (fromAi.length) return fromAi;
+  const shared = (p) => (p[2]?.length ?? 0) >= 2;
+  return [...phrases.filter(shared), ...phrases.filter((p) => !shared(p))].slice(0, 3).map((p) => ({ p, caption: null }));
+}
+
 export function buildSlides(stats, ai, actions, { you = null } = {}) {
   const s = stats, people = s.people;
   const me = you ? people.find((p) => p.name === you) : null;
@@ -54,12 +74,18 @@ export function buildSlides(stats, ai, actions, { you = null } = {}) {
   const slides = [];
   const add = (id, make, opts = {}) => slides.push({ id, theme: THEMES[id], make, ...opts });
 
-  add("intro", () => h("div", { class: "s-center" },
-    h("p", { class: "s-eyebrow" }, `${s.platform === "telegram" ? "Telegram" : "WhatsApp"} · ${s.period && s.period !== "All time" ? `${s.period} Wrapped` : "All-time Wrapped"}`),
-    h("h2", { class: "s-title xl" }, s.title),
-    h("p", { class: "s-sub" }, `${f.range(s.range.first, s.range.last)}`),
-    h("p", { class: "s-sub" }, `${people.length} ${people.length === 1 ? "person" : "people"} · ${f.int(s.totals.days)} days`),
-    h("p", { class: "s-hint" }, "Tap to start →")));
+  add("intro", () => {
+    const headline = live(ai, h("p", { class: "s-headline", "aria-live": "polite" }), (st) => (st.status === "ready" ? `“${st.data.headline}”` : null));
+    const el = h("div", { class: "s-center" },
+      h("p", { class: "s-eyebrow" }, `${s.platform === "telegram" ? "Telegram" : "WhatsApp"} · ${s.period && s.period !== "All time" ? `${s.period} Wrapped` : "All-time Wrapped"}`),
+      h("h2", { class: "s-title xl" }, s.title),
+      h("p", { class: "s-sub" }, `${f.range(s.range.first, s.range.last)}`),
+      h("p", { class: "s-sub" }, `${people.length} ${people.length === 1 ? "person" : "people"} · ${f.int(s.totals.days)} days`),
+      headline,
+      h("p", { class: "s-hint" }, "Tap to start →"));
+    el.cleanup = headline.cleanup;
+    return el;
+  });
 
   const pages = Math.round(s.totals.words / 250);
   add("total", () => h("div", null,
@@ -174,11 +200,24 @@ export function buildSlides(stats, ai, actions, { you = null } = {}) {
     });
   }
 
-  if (s.phrases?.length >= 3) {
-    add("phrases", () => h("div", null,
-      h("p", { class: "s-eyebrow" }, "Your catchphrases"),
-      h("h2", { class: "s-title" }, `“${s.phrases[0][0]}”, ${f.int(s.phrases[0][1])} times.`),
-      h("ol", { class: "s-phrases" }, s.phrases.slice(1, 7).map(([g, n]) => h("li", null, h("span", null, `“${g}”`), h("b", null, f.int(n)))))));
+  if (s.phrases?.length >= 2) {
+    add("phrases", () => live(ai, h("div", { class: "s-jokes-wrap" }), (st) => {
+      const jokes = pickJokes(s.phrases, st);
+      return [
+        h("p", { class: "s-eyebrow" }, "Running jokes"),
+        h("h2", { class: "s-title" }, `Times each of you said “${jokes[0].p[0]}”`),
+        h("div", { class: "s-jokes" }, jokes.map(({ p: [g, n, by = []], caption }, i) => {
+          const rows = by.slice(0, 4);
+          return h("div", { class: "s-joke" },
+            i ? h("b", { class: "s-joke-phrase" }, `“${g}”`) : null,
+            rows.length ? h("ul", { class: "s-joke-rows" }, rows.map(([name, c]) =>
+              h("li", null, h("span", null, name === you ? "You" : firstName(name)),
+                h("span", { class: "s-joke-bar" }, h("i", { style: `--w:${Math.max(4, (c / rows[0][1]) * 100)}%` })),
+                h("b", null, f.int(c))))) : null,
+            h("small", null, caption ?? `${f.int(n)} times in all${by.length > 4 ? `, by ${by.length} people` : ""}.`));
+        })),
+      ];
+    }));
   }
 
   const linkTotal = (s.sites ?? []).reduce((n, [, c]) => n + c, 0);
@@ -258,18 +297,18 @@ export function buildSlides(stats, ai, actions, { you = null } = {}) {
       const body = h("div", { class: "s-ai" });
       const render = (st) => {
         if (st.status === "loading") {
-          body.replaceChildren(h("p", { class: "s-eyebrow" }, "The AI's verdict"),
+          body.replaceChildren(h("p", { class: "s-eyebrow" }, "The AI's take"),
             h("div", { class: "s-shimmer" }, h("i"), h("i"), h("i")),
             h("p", { class: "s-note" }, "Reading the numbers (never your messages)…"));
         } else if (st.status === "error") {
-          body.replaceChildren(h("p", { class: "s-eyebrow" }, "The AI's verdict"),
+          body.replaceChildren(h("p", { class: "s-eyebrow" }, "The AI's take"),
             h("h2", { class: "s-title" }, "The AI is speechless."),
             h("p", { class: "s-sub" }, st.error));
         } else {
           const d = st.data;
           body.replaceChildren(
-            h("p", { class: "s-eyebrow" }, "The AI's verdict"),
-            h("h2", { class: "s-title ai-vibe quote" }, d.vibe),
+            h("p", { class: "s-eyebrow" }, `The AI's take · ${d.vibe}`),
+            h("h2", { class: "s-title ai-vibe quote" }, d.headline),
             h("p", { class: "s-sub" }, d.summary),
             stagger(h("div", { class: "s-personas s-scroll" }, d.personas.map((p) =>
               h("div", null, h("b", null, `${p.name}: ${p.title}`), h("span", null, p.line))))),
@@ -280,6 +319,20 @@ export function buildSlides(stats, ai, actions, { you = null } = {}) {
       body.cleanup = ai.subscribe(render);
       return body;
     });
+  }
+
+  if (ai.get().status !== "off") {
+    add("verdict", () => live(ai, h("div", { class: "s-center s-verdict" }), (st) => {
+      if (st.status === "loading") return [h("p", { class: "s-eyebrow" }, "The verdict"), h("div", { class: "s-shimmer" }, h("i"), h("i"), h("i"))];
+      if (st.status !== "ready" || !st.data.verdict) return [h("p", { class: "s-eyebrow" }, "The verdict"), h("h2", { class: "s-title" }, "No verdict this time."), h("p", { class: "s-sub" }, "The numbers speak for themselves.")];
+      const d = st.data;
+      return [
+        h("p", { class: "s-eyebrow" }, "The verdict"),
+        h("h2", { class: "s-title quote s-verdict-line" }, d.verdict),
+        d.tip ? h("p", { class: "s-tip" }, h("b", null, "Try this: "), d.tip) : null,
+        h("p", { class: "s-note" }, "Written from the numbers, never your messages."),
+      ];
+    }));
   }
 
   add("outro", () => {

@@ -23,7 +23,11 @@ export function createInsights(stats, { enabled, includeWords, you = null }) {
       .then((d) => set({
         status: "ready",
         data: {
+          headline: named(d.headline || d.vibe),
           vibe: named(d.vibe),
+          verdict: named(d.verdict || ""),
+          tip: named(d.tip || ""),
+          jokes: (d.jokes || []).map((j) => ({ phrase: j.phrase, caption: named(j.caption) })),
           summary: named(d.summary),
           prediction: named(d.prediction),
           personas: d.personas.map((p) => ({ name: names[Number(p.id.slice(1)) - 1], title: named(p.title), line: named(p.line) })),

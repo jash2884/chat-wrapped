@@ -3,7 +3,7 @@
 // A shared chat is handed to the page through Cache Storage on this device;
 // it is never sent to the server.
 
-const SHELL = "shell-v5";
+const SHELL = "shell-v6";
 const SHARED = "shared-chat";
 const SHARE_PATH = "/share-target";
 const SHELL_FILES = [

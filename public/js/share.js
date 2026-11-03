@@ -14,6 +14,23 @@ function fit(ctx, text, maxWidth, size, weight, family) {
   return `${t}…`;
 }
 
+// Splits text into at most two balanced lines and shrinks the font until both fit.
+function twoLines(ctx, text, maxWidth, size, family) {
+  ctx.font = `800 ${size}px ${family}`;
+  if (ctx.measureText(text).width <= maxWidth) return [text];
+  const words = text.split(" ");
+  let best = [text, ""], bestW = Infinity;
+  for (let i = 1; i < words.length; i++) {
+    const pair = [words.slice(0, i).join(" "), words.slice(i).join(" ")];
+    const w = Math.max(...pair.map((l) => ctx.measureText(l).width));
+    if (w < bestW) { best = pair; bestW = w; }
+  }
+  // One size for both lines (fillText uses whatever font was set last).
+  const s = Math.max(28, Math.min(size, Math.floor((size * maxWidth) / bestW)));
+  ctx.font = `800 ${s}px ${family}`;
+  return best.map((l) => fit(ctx, l, maxWidth, s, 800, family));
+}
+
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
   ctx.roundRect(x, y, w, h, r);
@@ -82,10 +99,15 @@ export async function renderCard(stats, aiState) {
   roundRect(ctx, 80, vibeY, W - 160, 200, 32);
   ctx.fillStyle = "rgba(255,255,255,.75)";
   ctx.font = `600 28px ${BODY}`;
-  ctx.fillText(ai ? "THE AI'S VERDICT" : "CHAT PERSONALITY", 116, vibeY + 62);
+  ctx.fillText(ai ? "THE HEADLINE" : "CHAT PERSONALITY", 116, vibeY + 62);
   ctx.fillStyle = "#fff";
-  const vibe = ai ? `“${ai.vibe}”` : `${stats.chronotype.emoji} ${stats.chronotype.label}`;
-  ctx.fillText(fit(ctx, vibe, W - 232, 62, 800, DISPLAY), 116, vibeY + 146);
+  if (ai) {
+    // Headlines run long, so they get two lines at one shared size.
+    const lines = twoLines(ctx, `“${ai.headline}”`, W - 232, 56, DISPLAY);
+    lines.forEach((line, i) => ctx.fillText(line, 116, vibeY + (lines.length === 1 ? 146 : 120 + i * 58)));
+  } else {
+    ctx.fillText(fit(ctx, `${stats.chronotype.emoji} ${stats.chronotype.label}`, W - 232, 62, 800, DISPLAY), 116, vibeY + 146);
+  }
 
   ctx.fillStyle = "rgba(255,255,255,.7)";
   ctx.font = `600 28px ${BODY}`;

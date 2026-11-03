@@ -115,7 +115,7 @@ export function analyze({ title, platform, messages }) {
     for (const e of text.match(EMOJI) ?? []) { bump(emojis, e); bump(p.emojiMap, e); p.emojis++; }
     if (LAUGH.test(text)) p.laughs++;
     if (text.includes("?")) p.questions++;
-    const tokens = (text.toLowerCase().match(WORD) ?? []).map((raw) => raw.replace(/['’]+$/, ""));
+    const tokens = tokenize(text);
     for (const w of tokens) {
       if (w.length >= 3 && !STOP.has(w) && !/^\d+$/.test(w)) { bump(words, w); bump(p.wordMap, w); }
     }
@@ -219,7 +219,7 @@ export function analyze({ title, platform, messages }) {
     streak: { days: streak.days, from: dayIso(streak.from), to: dayIso(streak.to) },
     silence: silence.days ? { days: silence.days, from: dayIso(silence.from), to: dayIso(silence.to) } : null,
     topWords: top(words, 30),
-    phrases: topPhrases(phrases),
+    phrases: whoSaysIt(topPhrases(phrases), msgs),
     sites: top(sites, 8),
     mediaTypes: top(mediaTypes, 6),
     marathon,
@@ -248,6 +248,20 @@ function countPhrases(tokens, phrases) {
     }
   }
   for (const g of seen) bump(phrases, g);
+}
+
+const tokenize = (text) => (text.toLowerCase().match(WORD) ?? []).map((raw) => raw.replace(/['’]+$/, ""));
+
+// Adds who said each phrase, most first: [phrase, total, [[name, count], ...]].
+// A second pass over just the winning phrases keeps memory flat on huge chats.
+function whoSaysIt(kept, msgs) {
+  const by = kept.map(() => new Map());
+  for (const m of msgs) {
+    if (m.kind !== "text") continue;
+    const line = ` ${tokenize(m.text.replace(LINK, " ")).join(" ")} `;
+    kept.forEach(([g], i) => { if (line.includes(` ${g} `)) bump(by[i], m.author); });
+  }
+  return kept.map(([g, n], i) => [g, n, top(by[i], 12)]);
 }
 
 const EDGE = new Set("a an the and or but to of in on at for with from by is was are were be been it this that so".split(" "));

@@ -131,3 +131,18 @@ test("the person who exported shows as You with correct grammar", async () => {
   assert.equal(payload.you, "P2");
   assert.deepEqual(names, ["Priya", "You"]);
 });
+
+test("running jokes count who says each phrase", () => {
+  const messages = [];
+  for (let d = 1; d <= 12; d++) {
+    messages.push(msg(at(d, 20), "Dev", "after payday"), msg(at(d, 20, 1), "Ellie", "you said that in March"));
+    if (d <= 3) messages.push(msg(at(d, 20, 2), "Callum", "after payday"));
+  }
+  const s = analyze({ title: "t", platform: "whatsapp", messages });
+  const [, total, by] = s.phrases.find(([g]) => g === "after payday");
+  assert.equal(total, 15);
+  assert.deepEqual(by, [["Dev", 12], ["Callum", 3]]);
+  const { payload } = insightsPayload(s, { includeWords: true });
+  assert.deepEqual(payload.phrases.find((p) => p.text === "after payday").by, [{ id: "P1", n: 12 }, { id: "P3", n: 3 }]);
+  assert.deepEqual(insightsPayload(s).payload.phrases, [], "phrases stay on the device unless words are opted in");
+});

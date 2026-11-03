@@ -18,8 +18,10 @@ function aiPanel(ai) {
       const d = st.data;
       panel.replaceChildren(
         h("h3", null, "The AI's verdict"),
-        h("p", { class: "vibe" }, `“${d.vibe}”`),
+        h("p", { class: "vibe" }, `“${d.headline}”`),
         h("p", null, d.summary),
+        d.verdict ? h("p", { class: "verdict" }, h("b", null, "Bottom line: "), d.verdict) : null,
+        d.tip ? h("p", { class: "muted" }, `💡 Try this: ${d.tip}`) : null,
         h("div", { class: "personas" }, d.personas.map((p) =>
           h("div", null, h("b", null, p.name), h("em", null, p.title), h("span", null, p.line)))),
         h("p", { class: "muted" }, `🔮 ${d.prediction}`));
@@ -260,7 +262,9 @@ export function renderDashboard(el, stats, ai, actions, { years = [], period = "
         : h("p", { class: "muted" }, "No emojis. A serious chat."))),
     h("div", { class: "grid-2" },
       card("Catchphrases", s.phrases?.length
-        ? h("ol", { class: "phrase-list" }, s.phrases.map(([g, n]) => h("li", null, h("span", null, `“${g}”`), h("b", null, f.int(n)))))
+        ? h("ol", { class: "phrase-list" }, s.phrases.map(([g, n, by = []]) => h("li", null,
+          h("span", null, `“${g}”`, by[0] && s.people.length > 1 ? h("small", null, ` mostly ${by[0][0] === you ? "you" : by[0][0]} (${f.int(by[0][1])})`) : null),
+          h("b", null, f.int(n)))))
         : h("p", { class: "muted" }, "No phrase came up 3 or more times.")),
       card("Dynamic duos", s.duos?.length && s.people.length > 2
         ? h("ol", { class: "duo-list" }, s.duos.map((d) => h("li", null, h("span", null, d.people.map((n) => (n === you ? "You" : n)).join(" & ")), h("b", null, `${f.int(d.replies)} replies`))))

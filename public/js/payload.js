@@ -23,6 +23,11 @@ export function insightsPayload(stats, { includeWords = false, you = null } = {}
     busiestDayMessages: stats.busiestDay.count,
     topEmojis: stats.topEmojis.slice(0, 8).map(([e]) => e),
     topWords: includeWords ? stats.topWords.slice(0, 20).map(([w]) => w) : [],
+    // Recurring phrases ("after payday") so the AI can pick the chat's running jokes.
+    // Like top words, only sent when the reader opts in.
+    phrases: includeWords ? (stats.phrases ?? []).slice(0, 10).map(([text, total, by = []]) => ({
+      text, total, by: by.filter(([name]) => ids.has(name)).map(([name, n]) => ({ id: ids.get(name), n })),
+    })) : [],
     members: people.map((p) => ({
       id: ids.get(p.name),
       share: r2(p.share),
